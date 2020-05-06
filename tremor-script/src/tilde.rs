@@ -36,6 +36,7 @@ use dissect::Pattern;
 use regex::Regex;
 use simd_json::borrowed::{Object, Value};
 use simd_json::prelude::*;
+use simd_json::StaticNode;
 use std::borrow::Cow;
 use std::fmt;
 use std::iter::{Iterator, Peekable};
@@ -44,6 +45,54 @@ use std::slice::Iter;
 use std::str::FromStr;
 use tremor_influx as influx;
 use tremor_kv as kv;
+use url::Url;
+
+fn parse_url<'event>(url: &str) -> Result<Value<'event>, ExtractorError> {
+    match Url::parse(&url) {
+        Ok(ref url3) => {
+            let scheme = url3.scheme();
+            let host = url3.host_str();
+            let path = url3.path();
+            let port = url3.port();
+            let username = url3.username();
+            let password = url3.password();
+            let query_raw = url3.query();
+            let query = url3.query_pairs().into_owned();
+            Ok(Value::Object(Box::new(hashmap!(
+                "scheme".into() => scheme.to_string().into(),
+                "host".into() => match host {
+                    Some(host) => host.to_string().into(),
+                    None => Value::Static(StaticNode::Null),
+                },
+                "port".into() => match port {
+                    Some(port) => port.into(),
+                    None => Value::Static(StaticNode::Null),
+                },
+                "username".into() => username.to_string().into(),
+                // @NOTE This facility has security impact and may need to be revisited in future
+                "password".into() => match password {
+                    Some(password) => password.to_string().into(),
+                    None => Value::Static(StaticNode::Null),
+                },
+                "path".into() => path.to_string().into(),
+                "query".into() => {
+                    if query_raw.is_none()  {
+                        Value::Static(StaticNode::Null)
+                    } else {
+                        let qp: HashMap<Cow<'_, str>,Value> = query.map(|(k,v)|(k.into(), Value::from(v))).collect();
+                        Value::Object(Box::new(qp))
+                    }
+                },
+            ))))
+        }
+        Err(e) => Err(ExtractorError {
+            msg: format!(
+                "Unable to parse url format or parse error: {}, ",
+                e.to_string()
+            ),
+        }),
+    }
+}
 
 fn parse_network(address: Ipv4Addr, mut itr: Peekable<Iter<u8>>) -> Option<IpCidr> {
     let mut network_length = match itr.next()? {
@@ -195,6 +244,7 @@ pub(crate) enum Extractor {
         #[serde(skip)]
         has_timezone: bool,
     },
+    UrlParse,
 }
 
 #[derive(Debug, Serialize)]
@@ -315,6 +365,7 @@ impl Extractor {
                 format: rule_text.to_string(),
                 has_timezone: datetime::has_tz(rule_text),
             },
+            "url" => Extractor::UrlParse,
             other => {
                 return Err(ExtractorError {
                     msg: format!("Unsupported extractor {}", other),
@@ -472,6 +523,7 @@ impl Extractor {
                     };
                     Ok(Value::from(d))
                 }
+                Self::UrlParse => parse_url(s),
             }
         } else {
             Err(ExtractorError {
@@ -812,6 +864,30 @@ mod test {
                     &EventContext::new(0, None)
                 ),
                 Ok(Value::from(1_560_988_800_000_000_000_u64))
+            ),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_urlparse_extractor() {
+        let ex = Extractor::new("url", "").expect("bad extractor");
+        match ex {
+            Extractor::UrlParse { .. } => assert_eq!(
+                ex.extract(
+                    true,
+                    &Value::from("https://example.org/snot%20badger.jpg?foo=bar%20baz"),
+                    &EventContext::new(0, None)
+                ),
+                Ok(Value::from(hashmap! (
+                    "scheme".into() => "https".into(),
+                    "host".into() => "example.org".into(),
+                    "path".into() => "/snot%20badger.jpg".into(),
+                    "port".into() => Value::Static(StaticNode::Null),
+                    "username".into() => "".into(),
+                    "password".into() => Value::Static(StaticNode::Null),
+                    "query".into() => Value::Object(Box::new(hashmap!("foo".into() => "bar baz".into()))),
+                )))
             ),
             _ => unreachable!(),
         }
