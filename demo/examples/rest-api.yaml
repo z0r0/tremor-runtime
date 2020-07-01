@@ -1,0 +1,56 @@
+onramp:
+  - id: rest
+    type: rest
+    config:
+      host: 0.0.0.0
+      port: 8139
+      resources:
+        - path: /snot
+          allow:
+            - method: GET
+              status_code: 204
+
+pipeline:
+  - id: main
+    interface:
+      inputs:
+        - in
+      outputs:
+        - out
+        - error
+    nodes:
+      - id: runtime
+        op: runtime::tremor
+        config:
+          script: |
+            use tremor::system;
+            let event.hostname = system::hostname();
+
+            match event of
+              case %{ path == "/snot" } =>
+                "badger"
+              default =>
+                event
+            end;
+    links:
+      in: [ runtime ]
+      runtime: [ out ]
+      runtime/error: [ error ]
+
+binding:
+  - id: default
+    links:
+      '/onramp/rest/{instance}/out': [ '/pipeline/main/{instance}/in' ]
+
+      '/pipeline/main/{instance}/out': [ '/offramp/system::stdout/system/in' ]
+      #'/pipeline/main/{instance}/out':
+      #  - '/offramp/system::stdout/system/in'
+      #  - '/onramp/rest/{instance}/response'
+
+      '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
+
+      # tremor metrics
+      #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]
+mapping:
+  /binding/default/01:
+    instance: '01'

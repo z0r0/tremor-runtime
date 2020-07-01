@@ -4927,6 +4927,7 @@ dependencies = [
  "surf",
  "tempfile",
  "threadpool",
+ "tide",
  "tokio-postgres",
  "tremor-influx 0.1.0",
  "tremor-pipeline",

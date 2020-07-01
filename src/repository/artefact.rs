@@ -349,7 +349,7 @@ impl Artefact for OnrampArtefact {
 
         world
             .system
-            .send(system::ManagerMsg::CreateOnrampt(
+            .send(system::ManagerMsg::CreateOnramp(
                 tx,
                 onramp::Create {
                     id: servant_id,

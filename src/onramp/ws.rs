@@ -150,7 +150,6 @@ async fn onramp_loop(
                     id,
                     data
                 );
-
             },
             msg = rx.recv().fuse() => if let Ok(msg) = msg {
                 match handle_pipelines_msg(msg, &mut pipelines, &mut metrics_reporter)? {

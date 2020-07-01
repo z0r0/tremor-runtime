@@ -56,7 +56,7 @@ lazy_static! {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum ManagerMsg {
     CreatePipeline(sync::Sender<Result<pipeline::Addr>>, pipeline::Create),
-    CreateOnrampt(sync::Sender<Result<onramp::Addr>>, onramp::Create),
+    CreateOnramp(sync::Sender<Result<onramp::Addr>>, onramp::Create),
     CreateOfframp(sync::Sender<Result<offramp::Addr>>, offramp::Create),
     Stop,
 }
@@ -83,7 +83,7 @@ impl Manager {
                     Ok(ManagerMsg::CreatePipeline(r, c)) => {
                         self.pipeline.send(pipeline::ManagerMsg::Create(r, c)).await
                     }
-                    Ok(ManagerMsg::CreateOnrampt(r, c)) => {
+                    Ok(ManagerMsg::CreateOnramp(r, c)) => {
                         self.onramp.send(onramp::ManagerMsg::Create(r, c)).await
                     }
                     Ok(ManagerMsg::CreateOfframp(r, c)) => {

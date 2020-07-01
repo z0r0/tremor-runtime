@@ -11,18 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-/*
-use crate::errors::Error;
+
 use crate::onramp::prelude::*;
-use actix_router::ResourceDef;
-use actix_web::{
-    dev::Payload, web, web::Data, App, FromRequest, HttpRequest, HttpResponse, HttpServer,
-};
-use futures::future::{result, Future};
+use async_std::sync::Sender;
+//use futures::{select, FutureExt, StreamExt};
+use futures::{select, FutureExt};
 use halfbrown::HashMap;
-use http::{Method, StatusCode};
 use serde_yaml::Value;
-use simd_json::json;
+use simd_json::prelude::*;
+use tide::http::Method;
+use tide::{Body, Request, Response};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
@@ -48,6 +46,16 @@ pub struct ResourceConfig {
     method: HttpMethod,
     params: Option<Vec<String>>,
     status_code: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub enum HttpMethod {
+    GET,
+    POST,
+    PUT,
+    PATCH,
+    DELETE,
+    // HEAD,
 }
 
 fn dflt_host() -> String {
@@ -81,15 +89,20 @@ impl Onramp for Rest {
         preprocessors: &[String],
         metrics_reporter: RampReporter,
     ) -> Result<onramp::Addr> {
+        let (tx, rx) = channel(1);
         let config = self.config.clone();
-        let (tx, rx) = bounded(0);
         let codec = codec::lookup(&codec)?;
         // rest is special
         let preprocessors = preprocessors.to_vec();
-        thread::Builder::new()
+        task::Builder::new()
             .name(format!("onramp-rest-{}", "???"))
-            .spawn(move || onramp_loop(&rx, config, preprocessors, codec, metrics_reporter))?;
-
+            .spawn(async move {
+                if let Err(e) =
+                    onramp_loop(&rx, config, preprocessors, codec, metrics_reporter).await
+                {
+                    error!("[Onramp] Error: {}", e)
+                }
+            })?;
         Ok(tx)
     }
 
@@ -98,15 +111,18 @@ impl Onramp for Rest {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub enum HttpMethod {
-    //    GET,
-    POST,
-    PUT,
-    PATCH,
-    DELETE,
-    //    HEAD,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TremorRestRequest {
+    path: String,
+    query_params: String,
+    actual_path: String,
+    path_params: HashMap<String, String>,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+    method: String,
 }
+
+type RestOnrampMessage = (tremor_pipeline::EventOriginUri, TremorRestRequest);
 
 #[derive(Clone)]
 struct OnrampState {
@@ -114,77 +130,137 @@ struct OnrampState {
     config: Config,
 }
 
-impl Default for OnrampState {
-    fn default() -> Self {
-        let (tx, _) = bounded(1);
-        Self {
-            tx,
-            config: Config::default(),
+// We got to allow this because of the way that the onramp works
+// by creating new instances during runtime.
+#[allow(clippy::needless_pass_by_value)]
+//#[allow(clippy::mut_mut)]
+async fn onramp_loop(
+    rx: &Receiver<onramp::Msg>,
+    config: Config,
+    preprocessors: Vec<String>,
+    mut codec: Box<dyn codec::Codec>,
+    mut metrics_reporter: RampReporter,
+) -> Result<()> {
+    let (loop_tx, loop_rx) = channel(64);
+
+    let addr = format!("{}:{}", config.host, config.port);
+
+    let mut pipelines = Vec::new();
+    let mut id = 0;
+    //let mut no_pp = vec![];
+    // TODO test
+    let mut preprocessors = make_preprocessors(&preprocessors)?;
+
+    // start the rest server
+    task::Builder::new()
+        .name(format!("onramp-rest-server-{}", "???"))
+        .spawn(async move {
+            let mut server = tide::Server::with_state(OnrampState {
+                tx: loop_tx,
+                config,
+            });
+            server
+                // TODO does not cover /. also support other methods
+                .at("/*")
+                .get(|mut req: Request<OnrampState>| async move {
+                    let state = req.state();
+
+                    // TODO is clone necessary?
+                    let tx = state.tx.clone();
+                    let url = req.url().clone();
+
+                    let response = TremorRestRequest {
+                        path: url.path().to_string(),
+                        actual_path: String::default(), // TODO
+                        query_params: url.query().unwrap_or("").to_string(),
+                        path_params: HashMap::default(), // TODO
+                        headers: HashMap::default(),     // TODO
+                        body: req.body_bytes().await?,
+                        method: req.method().to_string(),
+                    };
+                    // TODO cache parts of this and update host only on new request
+                    let origin_uri = tremor_pipeline::EventOriginUri {
+                        scheme: "tremor-rest".to_string(),
+                        host: req
+                            .host()
+                            .unwrap_or("tremor-rest-client-host.remote")
+                            .to_string(),
+                        port: None,
+                        // TODO add server port here (like for tcp onramp) -- can be done via OnrampState
+                        path: vec![String::default()],
+                    };
+
+                    //dbg!(req.url().to_string());
+                    //dbg!(&response);
+
+                    // TODO check for failure?
+                    tx.send((origin_uri, response)).await;
+
+                    let status = match req.method() {
+                        // TODO enable GET only for linked transport usecase...
+                        Method::Get => 200,
+                        Method::Post => 201,
+                        Method::Delete => 200,
+                        _ => 204,
+                    };
+                    let mut res = Response::new(status);
+                    //res.set_body(Body::from_string("".to_string()));
+                    let hello_string = format!("Hello from {}!", &req.state().config.host);
+                    res.set_body(Body::from_string(hello_string));
+                    Ok(res)
+                });
+
+            // TODO better messages here
+            println!("[Onramp] Listening on: {}", addr);
+            if let Err(e) = server.listen(&addr).await {
+                error!("[Onramp] Error: {}", e)
+            }
+
+            warn!("[Onramp] Rest server stopped");
+        })?;
+
+    loop {
+        //println!("before handle pipelines");
+        loop {
+            match handle_pipelines(&rx, &mut pipelines, &mut metrics_reporter).await? {
+                PipeHandlerResult::Retry => continue,
+                PipeHandlerResult::Terminate => return Ok(()),
+                PipeHandlerResult::Normal => break,
+            }
+        }
+        //println!("after handle pipelines");
+
+        select! {
+            msg = loop_rx.recv().fuse() => if let Ok((origin_uri, data)) = msg {
+                //dbg!(&data);
+                let data = json!(data).encode().into_bytes();
+                let mut ingest_ns = nanotime();
+                id += 1;
+                send_event(
+                    &pipelines,
+                    //&mut no_pp,
+                    &mut preprocessors,
+                    &mut codec,
+                    &mut metrics_reporter,
+                    &mut ingest_ns,
+                    &origin_uri,
+                    id,
+                    data
+                );
+            },
+            msg = rx.recv().fuse() => if let Ok(msg) = msg {
+                println!("before handle pipelines msg");
+                match handle_pipelines_msg(msg, &mut pipelines, &mut metrics_reporter)? {
+                    PipeHandlerResult::Retry | PipeHandlerResult::Normal => continue,
+                    PipeHandlerResult::Terminate => break,
+                }
+            }
         }
     }
-}
-impl actix_web::error::ResponseError for Error {}
-
-impl FromRequest for OnrampState {
-    type Config = Self;
-    type Error = Error;
-    type Future = Result<Self>;
-
-    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Result<Self> {
-        let state = req.get_app_data::<Self>();
-        if let Some(st) = state {
-            Ok(st.get_ref().to_owned())
-        } else {
-            Err("app cannot register state".into())
-        }
-    }
-}
-fn handler(
-    sp: (Data<OnrampState>, web::Bytes, HttpRequest),
-) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
-    let state = sp.0;
-    let payload = sp.1;
-    let req = sp.2;
-    let tx = state.tx.clone();
-    // apply preprocessors
-    let body = payload.to_vec();
-
-    let pp = path_params(state.config.resources.clone(), req.match_info().path());
-    let response = Response {
-        path: req.path().to_string(),
-        actual_path: pp.0,
-        query_params: req.query_string().to_owned(),
-        path_params: pp.1,
-        headers: header(req.headers()),
-        body,
-        method: req.method().as_str().to_owned(),
-    };
-    // TODO cache parts of this and update host only on new request
-    let origin_uri = tremor_pipeline::EventOriginUri {
-        scheme: "tremor-rest".to_string(),
-        host: req
-            .connection_info()
-            .remote()
-            .unwrap_or("tremor-rest-client-host.remote")
-            .to_string(),
-        port: None,
-        // TODO add server port here (like for tcp onramp) -- can be done via OnrampState
-        path: vec![String::default()],
-    };
-
-    if let Err(_e) = tx.send((origin_uri, response)) {
-        Box::new(result(Err("Failed to send to pipeline".into())))
-    } else {
-        let status = StatusCode::from_u16(match *req.method() {
-            Method::POST => 201_u16,
-            Method::DELETE => 200_u16,
-            _ => 204_u16,
-        })
-        .unwrap_or_default();
-        Box::new(result(Ok(HttpResponse::build(status).body("".to_string()))))
-    }
+    Ok(())
 }
 
+/*
 fn header(headers: &actix_web::http::header::HeaderMap) -> HashMap<String, String> {
     headers
         .iter()
@@ -208,92 +284,4 @@ fn path_params(patterns: Vec<EndpointConfig>, path: &str) -> (String, HashMap<St
     }
     (String::default(), HashMap::default())
 }
-
-// We got to allow this because of the way that the onramp works
-// by creating new instances during runtime.
-#[allow(clippy::needless_pass_by_value)]
-fn onramp_loop(
-    rx: &Receiver<onramp::Msg>,
-    config: Config,
-    preprocessors: Vec<String>,
-    mut codec: std::boxed::Box<dyn codec::Codec>,
-    mut metrics_reporter: RampReporter,
-) -> Result<()> {
-    let host = format!("{}:{}", config.host, config.port);
-    let (tx, dr) = bounded::<RestOnrampMessage>(1);
-    thread::Builder::new()
-        .name(format!("onramp-rest-{}", "???"))
-        .spawn(move || {
-            let data = Data::new(OnrampState { tx, config });
-            let s = HttpServer::new(move || {
-                App::new()
-                    .register_data(data.clone())
-                    //.service(web::resource("/*").to(handler))
-            })
-            .bind(host);
-
-            if let Err(err) = s.and_then(HttpServer::run) {
-                return error!("Cannot run server: {}", err);
-            }
-        })?;
-    let mut pipelines: Vec<(TremorURL, pipeline::Addr)> = Vec::new();
-    let mut preprocessors = make_preprocessors(&preprocessors)?;
-
-    loop {
-        if pipelines.is_empty() {
-            match rx.recv() {
-                Ok(onramp::Msg::Connect(ps)) => {
-                    for p in &ps {
-                        if p.0 == *METRICS_PIPELINE {
-                            metrics_reporter.set_metrics_pipeline(p.clone());
-                        } else {
-                            pipelines.push(p.clone());
-                        }
-                    }
-                }
-                Ok(onramp::Msg::Disconnect { tx, .. }) => {
-                    tx.send(true)?;
-                    return Ok(());
-                }
-                Err(e) => error!("{}", e),
-            };
-            continue;
-        } else {
-            match dr.try_recv() {
-                Ok((origin_uri, data)) => {
-                    let data = json!(data).encode().into_bytes();
-                    let mut ingest_ns = nanotime();
-                    send_event(
-                        &pipelines,
-                        &mut preprocessors,
-                        &mut codec,
-                        &mut metrics_reporter,
-                        &mut ingest_ns,
-                        &origin_uri,
-                        0,
-                        data,
-                    );
-                    continue;
-                }
-                Err(TryRecvError::Empty) => (),
-                Err(TryRecvError::Disconnected) => {
-                    return Ok(());
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Response {
-    path: String,
-    query_params: String,
-    actual_path: String,
-    path_params: HashMap<String, String>,
-    headers: HashMap<String, String>,
-    body: Vec<u8>,
-    method: String,
-}
-
-type RestOnrampMessage = (tremor_pipeline::EventOriginUri, Response);
 */

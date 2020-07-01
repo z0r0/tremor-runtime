@@ -33,7 +33,7 @@ mod udp;
 use async_std::sync::{self, channel};
 use async_std::task::{self, JoinHandle};
 use crossbeam_channel::Sender as CbSender;
-// mod rest;
+mod rest;
 mod ws;
 
 pub(crate) type Sender = sync::Sender<ManagerMsg>;
@@ -74,7 +74,7 @@ pub(crate) fn lookup(name: &str, config: &Option<Value>) -> Result<Box<dyn Onram
         "crononome" => crononome::Crononome::from_config(config),
         "udp" => udp::Udp::from_config(config),
         "tcp" => tcp::Tcp::from_config(config),
-        // "rest" => rest::Rest::from_config(config),
+        "rest" => rest::Rest::from_config(config),
         "ws" => ws::Ws::from_config(config),
         _ => Err(format!("Onramp {} not known", name).into()),
     }

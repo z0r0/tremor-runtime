@@ -56,7 +56,6 @@ tremor-pipeline = { path = "tremor-pipeline" }
 url = "2.1"
 async-tungstenite = { version = "0.8.0", features = ["async-std-runtime"] }
 
-
 log = "0.4"
 serde_derive = "1"
 lazy_static = "1"
@@ -102,6 +101,9 @@ grok = "1"
 # not used directly in tremor codebase, but present here so that we can turn
 # on features for these (see static-ssl feature here)
 #openssl = { version = "0.10" }
+
+# rest onramp
+tide = "0.11"
 
 [dependencies.tungstenite]
 version = "0.11"
