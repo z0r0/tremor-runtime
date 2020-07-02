@@ -100,7 +100,7 @@ pub(crate) fn send_event(
 
                     for (input, addr) in &pipelines[0..len - 1] {
                         if let Some(input) = input.instance_port() {
-                            if let Err(e) = addr.addr.send(pipeline::Msg::Event {
+                            if let Err(e) = addr.addr.try_send(pipeline::Msg::Event {
                                 input: input.into(),
                                 event: event.clone(),
                             }) {
@@ -111,7 +111,7 @@ pub(crate) fn send_event(
 
                     let (input, addr) = &pipelines[len - 1];
                     if let Some(input) = input.instance_port() {
-                        if let Err(e) = addr.addr.send(pipeline::Msg::Event {
+                        if let Err(e) = addr.addr.try_send(pipeline::Msg::Event {
                             input: input.into(),
                             event,
                         }) {

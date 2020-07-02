@@ -17,20 +17,24 @@ use crate::repository::PipelineArtefact;
 use crate::url::TremorURL;
 //use crate::offramp;
 use crate::{offramp, onramp};
-use async_std::sync::channel;
+//use async_std::stream::Stream;
+use async_std::sync::{self, channel};
 use async_std::task::{self, JoinHandle};
-use crossbeam_channel::{bounded, Sender as CbSender};
+//use crossbeam_channel::{bounded, Sender as CbSender};
+//use crossbeam_channel::Sender as CbSender;
 use std::borrow::Cow;
 use std::fmt;
 //use std::thread;
+use futures::stream::StreamExt;
 use tremor_pipeline::Event;
 
-pub(crate) type Sender = async_std::sync::Sender<ManagerMsg>;
+pub(crate) type Sender = sync::Sender<ManagerMsg>;
 
 /// Address for a a pipeline
 #[derive(Clone)]
 pub struct Addr {
-    pub(crate) addr: CbSender<Msg>,
+    //pub(crate) addr: CbSender<Msg>,
+    pub(crate) addr: sync::Sender<Msg>,
     pub(crate) id: ServantId,
 }
 
@@ -65,7 +69,8 @@ impl Dest {
     pub async fn send_event(&self, input: Cow<'static, str>, event: Event) -> Result<()> {
         match self {
             Self::Offramp(addr) => addr.send(offramp::Msg::Event { input, event })?,
-            Self::Pipeline(addr) => addr.addr.send(Msg::Event { input, event })?,
+            //Self::Pipeline(addr) => addr.addr.send(Msg::Event { input, event })?,
+            Self::Pipeline(addr) => addr.addr.send(Msg::Event { input, event }).await,
             // TODO only send event?
             Self::Onramp(addr) => addr.send(onramp::Msg::Event { input, event }).await,
         }
@@ -161,19 +166,20 @@ impl Manager {
         let mut dests: halfbrown::HashMap<Cow<'static, str>, Vec<(TremorURL, Dest)>> =
             halfbrown::HashMap::new();
         let mut eventset: Vec<(Cow<'static, str>, Event)> = Vec::new();
-        let (tx, rx) = bounded::<Msg>(self.qsize);
+        let (tx, mut rx) = channel::<Msg>(self.qsize);
         let mut pipeline = config.to_executable_graph(tremor_pipeline::buildin_ops)?;
         let mut pid = req.id.clone();
         pid.trim_to_instance();
         pipeline.id = pid.to_string();
-        dbg!("BEFORE pipline");
+        //dbg!("BEFORE pipline");
         task::Builder::new()
             .name(format!("pipeline-{}", id.clone()))
             .spawn(async move {
-                info!("[Pipeline:{}] starting thread.", id);
-                dbg!("Processing start");
-                for req in rx {
-                    dbg!("Processing");
+                info!("[Pipeline:{}] starting task.", id);
+                //dbg!("Processing start");
+                //for req in rx() {
+                while let Some(req) = rx.next().await {
+                    //dbg!("Processing");
                     match req {
                         Msg::Event { input, event } => {
                             match pipeline.enqueue(&input, event, &mut eventset) {
@@ -245,9 +251,9 @@ impl Manager {
                     };
                 }
                 dbg!("Processing final");
-                info!("[Pipeline:{}] stopping thread.", id);
+                info!("[Pipeline:{}] stopping task.", id);
             })?;
-        dbg!("AFTER pipline");
+        //dbg!("AFTER pipline");
         Ok(Addr {
             id: req.id,
             addr: tx,

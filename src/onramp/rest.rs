@@ -127,6 +127,7 @@ type RestOnrampMessage = (EventOriginUri, TremorRestRequest);
 #[derive(Clone)]
 struct OnrampState {
     tx: Sender<RestOnrampMessage>,
+    link_rx: Receiver<Event>,
     config: Config,
 }
 
@@ -143,6 +144,8 @@ async fn onramp_loop(
 ) -> Result<()> {
     let (loop_tx, loop_rx) = channel(64);
 
+    let (link_tx, link_rx) = channel(1);
+
     let addr = format!("{}:{}", config.host, config.port);
 
     let mut pipelines = Vec::new();
@@ -157,6 +160,7 @@ async fn onramp_loop(
         .spawn(async move {
             let mut server = tide::Server::with_state(OnrampState {
                 tx: loop_tx,
+                link_rx,
                 config,
             });
             server
@@ -167,6 +171,7 @@ async fn onramp_loop(
 
                     // TODO is clone necessary?
                     let tx = state.tx.clone();
+                    let link_rx = state.link_rx.clone();
                     let url = req.url().clone();
 
                     let response = TremorRestRequest {
@@ -196,6 +201,22 @@ async fn onramp_loop(
                     // TODO check for failure?
                     tx.send((origin_uri, response)).await;
 
+                    let event = link_rx.recv().await?;
+                    //dbg!("BEFORE RESPONSE");
+                    //dbg!(&event.data);
+
+                    // TODO tackle all values
+                    //for value in event.value_iter() {
+                    //    dbg!(&value.encode());
+                    //}
+                    let event_data = event.value_iter().next().unwrap();
+                    //dbg!(&event_data);
+
+                    let mut event_bytes = Vec::new();
+                    event_data.write(&mut event_bytes)?;
+
+                    //let event_data = format!("Hello from {}!", &req.state().config.host);
+
                     let status = match req.method() {
                         // TODO enable GET only for linked transport usecase...
                         Method::Get => 200,
@@ -205,8 +226,8 @@ async fn onramp_loop(
                     };
                     let mut res = Response::new(status);
                     //res.set_body(Body::from_string("".to_string()));
-                    let hello_string = format!("Hello from {}!", &req.state().config.host);
-                    res.set_body(Body::from_string(hello_string));
+                    //res.set_body(Body::from_string(event_data.encode()));
+                    res.set_body(Body::from_bytes(event_bytes));
                     Ok(res)
                 });
 
@@ -227,6 +248,7 @@ async fn onramp_loop(
                 PipeHandlerResult::Terminate => return Ok(()),
                 PipeHandlerResult::Normal => break,
                 PipeHandlerResult::Response(event) => {
+                    dbg!("FROM PIPELINE (HP)");
                     dbg!(&event);
                     // TODO might want to continue here?
                     break;
@@ -254,12 +276,14 @@ async fn onramp_loop(
                 );
             },
             msg = rx.recv().fuse() => if let Ok(msg) = msg {
-                println!("before handle pipelines msg");
+                //println!("before handle pipelines msg");
                 match handle_pipelines_msg(msg, &mut pipelines, &mut metrics_reporter)? {
                     PipeHandlerResult::Retry | PipeHandlerResult::Normal => continue,
                     PipeHandlerResult::Terminate => break,
                     PipeHandlerResult::Response(event) => {
-                        dbg!(&event);
+                        //dbg!("FROM PIPELINE (HPM)");
+                        //dbg!(&event);
+                        link_tx.send(event).await;
                         continue;
                     }
                 }

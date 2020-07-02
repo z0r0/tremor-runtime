@@ -125,8 +125,10 @@ impl Rest {
             };
 
             for (pid, p) in pipelines {
+                //p.addr.send(pipeline::Msg::Insight(insight.clone()));
+                // TODO adopt try_send everywhere?
                 if p.addr
-                    .send(pipeline::Msg::Insight(insight.clone()))
+                    .try_send(pipeline::Msg::Insight(insight.clone()))
                     .is_err()
                 {
                     error!("Failed to send contraflow to pipeline {}", pid)
@@ -165,7 +167,7 @@ impl Rest {
                     .collect();
                 for (pid, p) in pipelines {
                     if p.addr
-                        .send(pipeline::Msg::Insight(insight.clone()))
+                        .try_send(pipeline::Msg::Insight(insight.clone()))
                         .is_err()
                     {
                         error!("Failed to send contraflow to pipeline {}", pid)

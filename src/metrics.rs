@@ -117,7 +117,7 @@ impl RampReporter {
                     kind: None,
                 };
 
-                if let Err(e) = metrics_addr.addr.send(pipeline::Msg::Event {
+                if let Err(e) = metrics_addr.addr.try_send(pipeline::Msg::Event {
                     input: input.into(),
                     event: metrics_event,
                 }) {

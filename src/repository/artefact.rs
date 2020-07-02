@@ -136,9 +136,10 @@ impl Artefact for Pipeline {
                                     to.clone(),
                                     offramp,
                                 ))
-                                .map_err(|e| -> Error {
-                                    format!("Could not send to pipeline: {}", e).into()
-                                })?;
+                                .await;
+                        //.map_err(|e| -> Error {
+                        //    format!("Could not send to pipeline: {}", e).into()
+                        //})?;
                         } else {
                             return Err(format!("Offramp {} not found", to).into());
                         }
@@ -154,9 +155,10 @@ impl Artefact for Pipeline {
                                     to.clone(),
                                     p,
                                 ))
-                                .map_err(|e| -> Error {
-                                    format!("Could not send to pipeline: {:?}", e).into()
-                                })?;
+                                .await;
+                        //.map_err(|e| -> Error {
+                        //    format!("Could not send to pipeline: {:?}", e).into()
+                        //})?;
                         } else {
                             return Err(format!("Pipeline {:?} not found", to).into());
                         }
@@ -185,13 +187,15 @@ impl Artefact for Pipeline {
                         pipeline
                             .addr
                             .send(pipeline::Msg::Disconnect(from.clone().into(), to))
-                            .map_err(|_e| Error::from("Failed to unlink pipeline"))?;
+                            .await;
+                        //.map_err(|_e| Error::from("Failed to unlink pipeline"))?;
                     }
                     Some(ResourceType::Pipeline) => {
                         pipeline
                             .addr
                             .send(pipeline::Msg::Disconnect(from.clone().into(), to))
-                            .map_err(|_e| Error::from("Failed to unlink pipeline"))?;
+                            .await;
+                        //.map_err(|_e| Error::from("Failed to unlink pipeline"))?;
                     }
                     _ => {
                         return Err("Source isn't an Offramp or Pipeline".into());
@@ -384,6 +388,7 @@ impl Artefact for OnrampArtefact {
                         //dbg!(&pipeline.id);
 
                         // TODO do this only if onramp connect is successful
+                        // also use try_send here (sync though)
                         pipeline
                             .addr
                             .clone()
@@ -392,9 +397,10 @@ impl Artefact for OnrampArtefact {
                                 to.clone(),
                                 onramp.clone(),
                             ))
-                            .map_err(|e| -> Error {
-                                format!("Could not send to pipeline: {}", e).into()
-                            })?;
+                            .await;
+                        //.map_err(|e| -> Error {
+                        //    format!("Could not send to pipeline: {}", e).into()
+                        //})?;
 
                         onramp
                             .send(onramp::Msg::Connect(vec![(to.clone(), pipeline)]))

@@ -153,7 +153,7 @@ impl Elastic {
 
             for (pid, p) in pipelines {
                 if p.addr
-                    .send(pipeline::Msg::Insight(insight.clone()))
+                    .try_send(pipeline::Msg::Insight(insight.clone()))
                     .is_err()
                 {
                     error!("Failed to send contraflow to pipeline {}", pid)
@@ -189,7 +189,7 @@ impl Elastic {
                     .collect();
                 for (pid, p) in pipelines {
                     if p.addr
-                        .send(pipeline::Msg::Insight(insight.clone()))
+                        .try_send(pipeline::Msg::Insight(insight.clone()))
                         .is_err()
                     {
                         error!("Failed to send contraflow to pipeline {}", pid)
