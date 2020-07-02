@@ -17,24 +17,27 @@ use crate::metrics::RampReporter;
 use crate::pipeline;
 use crate::repository::ServantId;
 use crate::url::TremorURL;
-use serde_yaml::Value;
-use std::fmt;
-mod blaster;
-mod crononome;
-mod file;
-#[cfg(feature = "gcp")]
-mod gsub;
-mod kafka;
-mod metronome;
-mod postgres;
-mod prelude;
-pub mod tcp;
-mod udp;
 use async_std::sync::{self, channel};
 use async_std::task::{self, JoinHandle};
 use crossbeam_channel::Sender as CbSender;
+use serde_yaml::Value;
+use std::borrow::Cow;
+use std::fmt;
+
+// TODO enable at the end
+//mod blaster;
+//mod crononome;
+//mod file;
+//#[cfg(feature = "gcp")]
+//mod gsub;
+//mod kafka;
+//mod metronome;
+//mod postgres;
+mod prelude;
 mod rest;
-mod ws;
+//pub mod tcp;
+//mod udp;
+//mod ws;
 
 pub(crate) type Sender = sync::Sender<ManagerMsg>;
 
@@ -45,7 +48,15 @@ pub(crate) trait Impl {
 #[derive(Clone, Debug)]
 pub enum Msg {
     Connect(Vec<(TremorURL, pipeline::Addr)>),
-    Disconnect { id: TremorURL, tx: CbSender<bool> },
+    Disconnect {
+        id: TremorURL,
+        tx: CbSender<bool>,
+    },
+    //Response(tremor_pipeline::Event),
+    Event {
+        event: tremor_pipeline::Event,
+        input: Cow<'static, str>,
+    },
 }
 
 pub type Addr = sync::Sender<Msg>;
@@ -64,18 +75,19 @@ pub(crate) trait Onramp: Send {
 #[cfg_attr(tarpaulin, skip)]
 pub(crate) fn lookup(name: &str, config: &Option<Value>) -> Result<Box<dyn Onramp>> {
     match name {
-        "blaster" => blaster::Blaster::from_config(config),
-        "file" => file::File::from_config(config),
-        #[cfg(feature = "gcp")]
-        "gsub" => gsub::GSub::from_config(config),
-        "kafka" => kafka::Kafka::from_config(config),
-        "postgres" => postgres::Postgres::from_config(config),
-        "metronome" => metronome::Metronome::from_config(config),
-        "crononome" => crononome::Crononome::from_config(config),
-        "udp" => udp::Udp::from_config(config),
-        "tcp" => tcp::Tcp::from_config(config),
+        // TODO enable at the end
+        //"blaster" => blaster::Blaster::from_config(config),
+        //"file" => file::File::from_config(config),
+        //#[cfg(feature = "gcp")]
+        //"gsub" => gsub::GSub::from_config(config),
+        //"kafka" => kafka::Kafka::from_config(config),
+        //"postgres" => postgres::Postgres::from_config(config),
+        //"metronome" => metronome::Metronome::from_config(config),
+        //"crononome" => crononome::Crononome::from_config(config),
+        //"udp" => udp::Udp::from_config(config),
+        //"tcp" => tcp::Tcp::from_config(config),
         "rest" => rest::Rest::from_config(config),
-        "ws" => ws::Ws::from_config(config),
+        //"ws" => ws::Ws::from_config(config),
         _ => Err(format!("Onramp {} not known", name).into()),
     }
 }

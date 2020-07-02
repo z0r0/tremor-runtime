@@ -122,7 +122,7 @@ pub struct TremorRestRequest {
     method: String,
 }
 
-type RestOnrampMessage = (tremor_pipeline::EventOriginUri, TremorRestRequest);
+type RestOnrampMessage = (EventOriginUri, TremorRestRequest);
 
 #[derive(Clone)]
 struct OnrampState {
@@ -226,6 +226,11 @@ async fn onramp_loop(
                 PipeHandlerResult::Retry => continue,
                 PipeHandlerResult::Terminate => return Ok(()),
                 PipeHandlerResult::Normal => break,
+                PipeHandlerResult::Response(event) => {
+                    dbg!(&event);
+                    // TODO might want to continue here?
+                    break;
+                }
             }
         }
         //println!("after handle pipelines");
@@ -253,6 +258,10 @@ async fn onramp_loop(
                 match handle_pipelines_msg(msg, &mut pipelines, &mut metrics_reporter)? {
                     PipeHandlerResult::Retry | PipeHandlerResult::Normal => continue,
                     PipeHandlerResult::Terminate => break,
+                    PipeHandlerResult::Response(event) => {
+                        dbg!(&event);
+                        continue;
+                    }
                 }
             }
         }

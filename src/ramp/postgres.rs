@@ -176,6 +176,8 @@ impl postgres::types::ToSql for Record<'_> {
     to_sql_checked!();
 }
 
+// TODO remove at the end
+#[allow(dead_code)]
 pub fn json_to_record<'a>(json: &'a simd_json::BorrowedValue<'a>) -> Result<Record> {
     let field_type = match json.get("fieldType").and_then(ValueTrait::as_str) {
         Some(v) => v,
@@ -210,6 +212,8 @@ pub fn json_to_record<'a>(json: &'a simd_json::BorrowedValue<'a>) -> Result<Reco
 
     Ok(Record { t, value, name })
 }
+// TODO remove at the end
+#[allow(dead_code)]
 pub fn row_to_json(
     row: &postgres::row::Row,
 ) -> std::result::Result<Value, Box<dyn std::error::Error + Sync + Send>> {

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 use crate::errors::{Error, Result};
-use crate::offramp;
 use crate::registry::ServantId;
 use crate::repository::PipelineArtefact;
 use crate::url::TremorURL;
+//use crate::offramp;
+use crate::{offramp, onramp};
 use async_std::sync::channel;
 use async_std::task::{self, JoinHandle};
 use crossbeam_channel::{bounded, Sender as CbSender};
@@ -45,6 +46,7 @@ pub(crate) enum Msg {
         event: Event,
         input: Cow<'static, str>,
     },
+    ConnectOnramp(Cow<'static, str>, TremorURL, onramp::Addr),
     ConnectOfframp(Cow<'static, str>, TremorURL, offramp::Addr),
     ConnectPipeline(Cow<'static, str>, TremorURL, Addr),
     Disconnect(Cow<'static, str>, TremorURL),
@@ -57,12 +59,21 @@ pub(crate) enum Msg {
 pub enum Dest {
     Offramp(offramp::Addr),
     Pipeline(Addr),
+    Onramp(onramp::Addr),
 }
 impl Dest {
     pub fn send_event(&self, input: Cow<'static, str>, event: Event) -> Result<()> {
         match self {
             Self::Offramp(addr) => addr.send(offramp::Msg::Event { input, event })?,
             Self::Pipeline(addr) => addr.addr.send(Msg::Event { input, event })?,
+            Self::Onramp(addr) => {
+                dbg!(&addr);
+                dbg!("FOR ONRAMP");
+                dbg!(&event);
+                // TODO only send event?
+                // adjust for async
+                //addr.send(onramp::Msg::Event { input, event }),
+            }
         }
         Ok(())
     }
@@ -94,12 +105,12 @@ impl Manager {
             loop {
                 match rx.recv().await {
                     Ok(ManagerMsg::Stop) => {
-                        info!("Stopping onramps...");
+                        info!("Stopping pipelines...");
                         break;
                     }
                     Ok(ManagerMsg::Create(r, create)) => r.send(self.start_pipeline(create)).await,
                     Err(e) => {
-                        info!("Stopping onramps... {}", e);
+                        info!("Stopping pipelines... {}", e);
                         break;
                     }
                 }
@@ -157,6 +168,7 @@ impl Manager {
         let mut pid = req.id.clone();
         pid.trim_to_instance();
         pipeline.id = pid.to_string();
+        dbg!("BEFORE pipline");
         thread::Builder::new()
             .name(format!("pipeline-{}", id.clone()))
             .spawn(move || {
@@ -206,6 +218,18 @@ impl Manager {
                                 offramps.push((pipeline_id, Dest::Pipeline(pipeline)));
                             } else {
                                 dests.insert(output, vec![(pipeline_id, Dest::Pipeline(pipeline))]);
+                            }
+                        }
+                        // TODO can we make this work without this?
+                        Msg::ConnectOnramp(output, onramp_id, onramp) => {
+                            info!(
+                                "[Pipeline:{}] connecting {} to onramp {}",
+                                id, output, onramp_id
+                            );
+                            if let Some(onramps) = dests.get_mut(&output) {
+                                onramps.push((onramp_id, Dest::Onramp(onramp)));
+                            } else {
+                                dests.insert(output, vec![(onramp_id, Dest::Onramp(onramp))]);
                             }
                         }
                         Msg::Disconnect(output, to_delete) => {

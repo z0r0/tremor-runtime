@@ -20,15 +20,18 @@ pub(crate) use crate::pipeline;
 pub(crate) use crate::preprocessor::{self, Preprocessors};
 pub(crate) use crate::system::METRICS_PIPELINE;
 pub(crate) use crate::url::TremorURL;
-pub(crate) use crate::utils::{hostname, nanotime, ConfigImpl};
+// TODO enable at the end
+//pub(crate) use crate::utils::{hostname, nanotime, ConfigImpl};
+pub(crate) use crate::utils::{nanotime, ConfigImpl};
 pub(crate) use async_std::sync::{channel, Receiver};
 pub(crate) use async_std::task;
 pub(crate) use simd_json::json;
-pub(crate) use tremor_pipeline::EventOriginUri;
+pub(crate) use tremor_pipeline::{Event, EventOriginUri};
 
 // TODO pub here too?
 use std::mem;
-pub(crate) use std::thread;
+// TODO enable at the end
+//pub(crate) use std::thread;
 
 pub fn make_preprocessors(preprocessors: &[String]) -> Result<Preprocessors> {
     preprocessors
@@ -133,6 +136,7 @@ pub(crate) enum PipeHandlerResult {
     Terminate,
     Retry,
     Normal,
+    Response(Event),
 }
 
 // Handles pipeline connections for an onramp
@@ -173,6 +177,7 @@ pub(crate) fn handle_pipelines_msg(
                 tx.send(true)?;
                 Ok(PipeHandlerResult::Terminate)
             }
+            onramp::Msg::Event { event, .. } => Ok(PipeHandlerResult::Response(event)),
         }
     } else {
         match msg {
@@ -186,6 +191,7 @@ pub(crate) fn handle_pipelines_msg(
                     tx.send(false)?;
                 }
             }
+            onramp::Msg::Event { event, .. } => return Ok(PipeHandlerResult::Response(event)),
         };
         Ok(PipeHandlerResult::Normal)
     }

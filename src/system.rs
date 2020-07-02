@@ -285,6 +285,7 @@ impl World {
             if self.reg.find_onramp(id).await?.is_none() {
                 self.bind_onramp(&id).await?;
             };
+            //dbg!(&mappings);
             onramp_a.artefact.link(self, id, mappings).await
         } else {
             Err(format!("Onramp {:?} not found.", id).into())

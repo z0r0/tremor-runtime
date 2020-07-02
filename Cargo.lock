@@ -201,6 +201,19 @@ dependencies = [
 
 [[package]]
 name = "async-sse"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aff0a3074c2c3cfd76417f6e03d5c99822d3ef37387af891e4a8bf46447ca870"
+dependencies = [
+ "async-std",
+ "http-types",
+ "log 0.4.11",
+ "memchr",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-sse"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "885fb340b166aff3a3b16dd49ef169d8ee34428aa10c0432c61fff584aa222b9"
@@ -3572,6 +3585,12 @@ dependencies = [
 
 [[package]]
 name = "route-recognizer"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea509065eb0b3c446acdd0102f0d46567dc30902dc0be91d6552035d92b0f4f8"
+
+[[package]]
+name = "route-recognizer"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56770675ebc04927ded3e60633437841581c285dc6236109ea25fbf3beb7b59e"
@@ -4360,13 +4379,30 @@ dependencies = [
 
 [[package]]
 name = "tide"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "151b07f369a9152c2f93715ea0db8a7f7e2533bd2e52fbff1ea5bad7a88db541"
+dependencies = [
+ "async-h1",
+ "async-sse 3.0.0",
+ "async-std",
+ "femme",
+ "http-types",
+ "kv-log-macro",
+ "route-recognizer 0.1.13",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "tide"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7c4c4e35f5a89ed08cbb59b6e4e1d648e563d6f8daa804002f3557d11d3c8f9"
 dependencies = [
  "async-h1",
  "async-session",
- "async-sse",
+ "async-sse 4.0.0",
  "async-std",
  "async-trait",
  "femme",
@@ -4374,7 +4410,7 @@ dependencies = [
  "http-types",
  "kv-log-macro",
  "pin-project-lite",
- "route-recognizer",
+ "route-recognizer 0.2.0",
  "serde",
  "serde_json",
 ]
@@ -4800,7 +4836,7 @@ dependencies = [
  "serde_derive",
  "serde_yaml",
  "simd-json",
- "tide",
+ "tide 0.13.0",
  "tremor-pipeline",
  "tremor-runtime",
 ]
@@ -4927,7 +4963,7 @@ dependencies = [
  "surf",
  "tempfile",
  "threadpool",
- "tide",
+ "tide 0.11.0",
  "tokio-postgres",
  "tremor-influx 0.1.0",
  "tremor-pipeline",
@@ -4994,7 +5030,7 @@ dependencies = [
  "mimalloc",
  "serde_yaml",
  "snmalloc-rs",
- "tide",
+ "tide 0.13.0",
  "tremor-api",
  "tremor-pipeline",
  "tremor-runtime",

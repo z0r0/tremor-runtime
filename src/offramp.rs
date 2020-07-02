@@ -38,7 +38,8 @@ mod gcs;
 mod gpub;
 mod kafka;
 mod newrelic;
-mod postgres;
+// TODO enable at the end
+//mod postgres;
 mod prelude;
 mod rest;
 mod stderr;
@@ -97,7 +98,8 @@ pub fn lookup(name: &str, config: &Option<OpConfig>) -> Result<Box<dyn Offramp>>
         "gpub" => gpub::GPub::from_config(config),
         "kafka" => kafka::Kafka::from_config(config),
         "newrelic" => newrelic::NewRelic::from_config(config),
-        "postgres" => postgres::Postgres::from_config(config),
+        // TODO enable at the end
+        //"postgres" => postgres::Postgres::from_config(config),
         "rest" => rest::Rest::from_config(config),
         "stdout" => stdout::StdOut::from_config(config),
         "stderr" => stderr::StdErr::from_config(config),
@@ -143,11 +145,11 @@ impl Manager {
         let (tx, rx) = channel(64);
 
         let h = task::spawn(async move {
-            info!("Onramp manager started");
+            info!("Offramp manager started");
             loop {
                 match rx.recv().await {
                     Ok(ManagerMsg::Stop) => {
-                        info!("Stopping onramps...");
+                        info!("Stopping offramps...");
                         break;
                     }
                     Ok(ManagerMsg::Create(
@@ -230,7 +232,7 @@ impl Manager {
                         r.send(Ok(tx)).await
                     }
                     Err(e) => {
-                        info!("Stopping onramps...: {}", e);
+                        info!("Stopping offramps...: {}", e);
                         break;
                     }
                 };

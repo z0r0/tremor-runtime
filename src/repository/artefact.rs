@@ -371,14 +371,36 @@ impl Artefact for OnrampArtefact {
     ) -> Result<Self::LinkResult> {
         if let Some(onramp) = system.reg.find_onramp(id).await? {
             // TODO: Make this a two step 'transactional' process where all pipelines are gathered and then send
-            for (_from, to) in mappings {
+            for (from, to) in mappings {
+                //dbg!(&to);
                 //TODO: Check that we really have the right onramp!
                 if let Some(ResourceType::Pipeline) = to.resource_type() {
                     if let Some(pipeline) = system.reg.find_pipeline(&to).await? {
+                        //dbg!(&onramp);
+                        dbg!(&from);
+                        dbg!(&to);
+
+                        dbg!(&pipeline);
+                        //dbg!(&pipeline.id);
+
+                        // TODO do this only if onramp connect is successful
+                        pipeline
+                            .addr
+                            .clone()
+                            .send(pipeline::Msg::ConnectOnramp(
+                                from.clone().into(),
+                                to.clone(),
+                                onramp.clone(),
+                            ))
+                            .map_err(|e| -> Error {
+                                format!("Could not send to pipeline: {}", e).into()
+                            })?;
+
                         onramp
                             .send(onramp::Msg::Connect(vec![(to.clone(), pipeline)]))
                             .await;
                     } else {
+                        dbg!("NOT FOUND");
                         return Err(format!("Pipeline {:?} not found", to).into());
                     }
                 } else {
@@ -580,6 +602,7 @@ impl Artefact for Binding {
                 );
                 system.bind_onramp(&from).await?;
             }
+            //dbg!(&to);
             system
                 .link_onramp(
                     &from,

@@ -122,6 +122,8 @@ pub struct Config {
 }
 
 impl MmapAnon {
+    // TODO remove at the end
+    #[allow(dead_code)]
     fn from_config(config: Option<Config>, obj: &simd_json::OwnedValue) -> Result<Box<dyn KV>> {
         if let Some(_config) = config {
             let string = obj.encode();
@@ -143,6 +145,8 @@ impl MmapAnon {
 }
 
 impl MmapFile {
+    // TODO remove at the end
+    #[allow(dead_code)]
     fn from_config(config: Option<Config>, obj: &simd_json::OwnedValue) -> Result<Box<dyn KV>> {
         if let Some(config) = config {
             let p = Path::new(&config.path);
@@ -173,6 +177,8 @@ impl MmapFile {
 }
 
 #[cfg_attr(tarpaulin, skip)]
+// TODO remove at the end
+#[allow(dead_code)]
 pub fn lookup(
     name: &str,
     config: Option<Config>,

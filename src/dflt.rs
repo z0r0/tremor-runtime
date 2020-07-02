@@ -21,6 +21,8 @@ pub fn d_true() -> bool {
 }
 
 // just a default
+// TODO remove at the end
+#[allow(dead_code)]
 #[cfg_attr(tarpaulin, skip)]
 pub fn d_false() -> bool {
     false
