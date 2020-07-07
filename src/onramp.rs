@@ -25,7 +25,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 // TODO enable at the end
-//mod blaster;
+mod blaster;
 //mod crononome;
 //mod file;
 //#[cfg(feature = "gcp")]
@@ -76,7 +76,7 @@ pub(crate) trait Onramp: Send {
 pub(crate) fn lookup(name: &str, config: &Option<Value>) -> Result<Box<dyn Onramp>> {
     match name {
         // TODO enable at the end
-        //"blaster" => blaster::Blaster::from_config(config),
+        "blaster" => blaster::Blaster::from_config(config),
         //"file" => file::File::from_config(config),
         //#[cfg(feature = "gcp")]
         //"gsub" => gsub::GSub::from_config(config),

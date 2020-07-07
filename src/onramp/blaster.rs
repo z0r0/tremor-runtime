@@ -111,6 +111,8 @@ fn onramp_loop(
             PipeHandlerResult::Retry => continue,
             PipeHandlerResult::Terminate => return Ok(()),
             PipeHandlerResult::Normal => (),
+            // TODO better handling here
+            PipeHandlerResult::Response(_) => continue,
         }
         // TODO better sleep perhaps
         if let Some(ival) = config.interval {
