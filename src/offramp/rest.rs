@@ -39,6 +39,8 @@ impl ConfigImpl for Config {}
 pub struct Rest {
     client_idx: usize,
     config: Config,
+    // TODO just u64 here
+    //queue: AsyncSink<(u64, Option<Vec<u8>>)>,
     queue: AsyncSink<u64>,
     pipelines: HashMap<TremorURL, pipeline::Addr>,
     postprocessors: Postprocessors,
@@ -64,36 +66,50 @@ impl offramp::Impl for Rest {
 }
 
 impl Rest {
-    async fn flush(endpoint: &str, config: Config, payload: Vec<u8>) -> Result<u64> {
+    async fn flush(
+        endpoint: &str,
+        config: Config,
+        payload: Vec<u8>,
+    ) -> Result<(u64, Option<Vec<u8>>)> {
         let start = Instant::now();
-        let mut c = if config.put {
+        let c = if config.put {
             surf::put(endpoint)
         } else {
-            surf::post(endpoint)
+            //surf::post(endpoint)
+            surf::get(endpoint)
         };
-        c = c.body_bytes(&payload);
-        for (k, v) in config.headers {
-            use http_types::headers::HeaderName;
-            match HeaderName::from_bytes(k.as_str().as_bytes().to_vec()) {
-                Ok(h) => {
-                    c = c.set_header(h, v.as_str());
-                }
-                Err(e) => error!("Bad header name: {}", e),
-            }
-        }
+        dbg!(payload.len());
+        // TODO resolve issues with get here
+        //c = c.body_bytes(&payload);
+        //for (k, v) in config.headers {
+        //    use http_types::headers::HeaderName;
+        //    match HeaderName::from_bytes(k.as_str().as_bytes().to_vec()) {
+        //        Ok(h) => {
+        //            c = c.set_header(h, v.as_str());
+        //        }
+        //        Err(e) => error!("Bad header name: {}", e),
+        //    }
+        //}
 
         let mut reply = c.await?;
         let status = reply.status();
-        if status.is_client_error() || status.is_server_error() {
+
+        let response = if status.is_client_error() || status.is_server_error() {
             if let Ok(body) = reply.body_string().await {
                 error!("HTTP request failed: {} => {}", status, body)
             } else {
                 error!("HTTP request failed: {}", status)
             }
-        }
+            None
+        } else {
+            // TODO do this only if linking is present, and only send back to
+            // the linked pipeline
+            let r = reply.body_bytes().await?;
+            Some(r)
+        };
 
         let d = duration_to_millis(start.elapsed());
-        Ok(d)
+        Ok((d, response))
     }
 
     fn enqueue_send_future(&mut self, payload: Vec<u8>) -> Result<()> {
@@ -107,12 +123,50 @@ impl Rest {
             .map(|(i, p)| (i.clone(), p.clone()))
             .collect();
         task::spawn(async move {
-            let r = Self::flush(&destination, config, payload).await;
+            let result = Self::flush(&destination, config, payload).await;
             let mut m = Object::new();
-            if let Ok(t) = r {
+            if let Ok((t, r)) = result {
                 m.insert("time".into(), t.into());
+
+                // handling linked transport case
+                if let Some(data) = r {
+                    // TODO apply proper codec based on response
+                    //let response_data = LineValue::new(vec![data], |_| Value::null().into());
+                    //let response = LineValue::try_new(vec![data], |data| {
+                    //    Value::from(std::str::from_utf8(data[0].as_slice())?).into()
+                    //})?;
+                    let response_data = LineValue::try_new(vec![data], |data| {
+                        simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
+                    });
+                    if let Ok(d) = response_data {
+                        let response = Event {
+                            is_batch: false,
+                            id: 0, // TODO better id?
+                            //data: (Value::null(), m).into(),
+                            data: d,
+                            ingest_ns: nanotime(),
+                            origin_uri: None,
+                            kind: None,
+                        };
+                        dbg!(&response);
+                        // TODO send only to the linked pipeline
+                        for (pid, p) in &pipelines {
+                            // TODO adopt try_send everywhere?
+                            // TODO avoid clone here
+                            if p.addr
+                                .try_send(pipeline::Msg::Response(response.clone()))
+                                .is_err()
+                            {
+                                error!("Failed to send response to pipeline {}", pid)
+                            };
+                        }
+                    } else {
+                        //error!("REST offramp error: {:?}", response_data);
+                        error!("REST offramp error: could not convert response to line value");
+                    }
+                }
             } else {
-                error!("REST offramp error: {:?}", r);
+                error!("REST offramp error: {:?}", result);
                 m.insert("error".into(), "Failed to send".into());
             };
             let insight = Event {
@@ -124,7 +178,7 @@ impl Rest {
                 kind: None,
             };
 
-            for (pid, p) in pipelines {
+            for (pid, p) in &pipelines {
                 //p.addr.send(pipeline::Msg::Insight(insight.clone()));
                 // TODO adopt try_send everywhere?
                 if p.addr
@@ -135,7 +189,9 @@ impl Rest {
                 };
             }
 
-            if let Err(e) = tx.send(r) {
+            // TODO send result here
+            //if let Err(e) = tx.send(result) {
+            if let Err(e) = tx.send(Ok(0)) {
                 error!("Failed to send reply: {}", e)
             }
         });
@@ -191,6 +247,7 @@ impl Rest {
 
 impl Offramp for Rest {
     fn on_event(&mut self, codec: &Box<dyn Codec>, _input: String, event: Event) -> Result<()> {
+        // TODO this should be configurable?
         let mut payload = Vec::with_capacity(4096);
         for value in event.value_iter() {
             let mut raw = codec.encode(value)?;

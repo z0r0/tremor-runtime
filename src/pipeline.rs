@@ -57,13 +57,14 @@ pub(crate) enum Msg {
     #[allow(dead_code)]
     Signal(Event),
     Insight(Event),
+    Response(Event),
 }
 
 #[derive(Debug)]
 pub enum Dest {
     Offramp(offramp::Addr),
     Pipeline(Addr),
-    Onramp(onramp::Addr),
+    Onramp(onramp::Addr), // for linked transports
 }
 impl Dest {
     pub async fn send_event(&self, input: Cow<'static, str>, event: Event) -> Result<()> {
@@ -182,10 +183,23 @@ impl Manager {
                     //dbg!("Processing");
                     match req {
                         Msg::Event { input, event } => {
+                            //dbg!(&input);
                             match pipeline.enqueue(&input, event, &mut eventset) {
                                 Ok(()) => {
                                     if let Err(e) = send_events(&mut eventset, &dests).await {
                                         error!("Failed to send event: {}", e)
+                                    }
+                                }
+                                Err(e) => error!("error: {:?}", e),
+                            }
+                        }
+                        Msg::Response(response) => {
+                            //dbg!(&response);
+                            // TODO don't hardcode input name here
+                            match pipeline.enqueue("upstream", response, &mut eventset) {
+                                Ok(()) => {
+                                    if let Err(e) = send_events(&mut eventset, &dests).await {
+                                        error!("Failed to send response event: {}", e)
                                     }
                                 }
                                 Err(e) => error!("error: {:?}", e),

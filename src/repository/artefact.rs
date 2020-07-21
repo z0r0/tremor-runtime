@@ -389,6 +389,7 @@ impl Artefact for OnrampArtefact {
 
                         // TODO do this only if onramp connect is successful
                         // also use try_send here (sync though)
+                        // TODO should be able to send this from specific onramp only?
                         pipeline
                             .addr
                             .clone()

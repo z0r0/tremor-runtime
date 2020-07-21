@@ -1,0 +1,69 @@
+onramp:
+  - id: rest
+    type: rest
+    config:
+      link: "/pipeline/main/{instance}/upstream"
+      host: 0.0.0.0
+      port: 9139
+      resources:
+        - path: /snot
+          allow:
+            - method: GET
+              status_code: 204
+
+pipeline:
+  - id: main
+    interface:
+      inputs:
+        - in
+        - upstream
+      outputs:
+        - out
+        - error
+        - debug
+    nodes:
+      - id: runtime
+        op: runtime::tremor
+        config:
+          script: |
+            event
+    links:
+      in: [ runtime ]
+      runtime: [ out ]
+      runtime/error: [ error ]
+
+      upstream: [ debug ]
+
+offramp:
+  - id: upstream
+    type: rest
+    config:
+      link: "/pipeline/main/{instance}/upstream"
+      endpoints:
+        # TODO flexible endpoints/methods
+        - http://localhost:8139/snot
+        #- http://localhost:8139/hello
+      #put: true
+      #headers:
+      #  "Client": "Tremor"
+
+binding:
+  - id: default
+    links:
+      '/onramp/rest/{instance}/out': [ '/pipeline/main/{instance}/in' ]
+
+      '/pipeline/main/{instance}/out': [
+        '/offramp/upstream/{instance}/in',
+        #'/offramp/system::stdout/system/in' # for debugging
+      ]
+
+      '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
+
+      # for debugging
+      '/pipeline/main/{instance}/debug': [ '/offramp/system::stderr/system/in' ]
+
+      # tremor metrics
+      #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]
+mapping:
+  /binding/default/01:
+    instance: '01'
