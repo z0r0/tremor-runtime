@@ -380,6 +380,7 @@ impl Artefact for OnrampArtefact {
                 //TODO: Check that we really have the right onramp!
                 if let Some(ResourceType::Pipeline) = to.resource_type() {
                     if let Some(pipeline) = system.reg.find_pipeline(&to).await? {
+                        /*
                         //dbg!(&onramp);
                         dbg!(&from);
                         dbg!(&to);
@@ -402,13 +403,52 @@ impl Artefact for OnrampArtefact {
                         //.map_err(|e| -> Error {
                         //    format!("Could not send to pipeline: {}", e).into()
                         //})?;
-
+                        */
                         onramp
                             .send(onramp::Msg::Connect(vec![(to.clone(), pipeline)]))
                             .await;
                     } else {
-                        dbg!("NOT FOUND");
+                        //dbg!("NOT FOUND");
                         return Err(format!("Pipeline {:?} not found", to).into());
+                    }
+                    // handling for linked transports
+                    // TODO make this generic linking
+                    let to_linked = TremorURL::parse("/pipeline/main/01/to-onramp")?;
+                    if let Some(pipeline) = system.reg.find_pipeline(&to_linked).await? {
+                        //dbg!(&onramp);
+                        dbg!(&from);
+                        dbg!(&to_linked);
+
+                        dbg!(&pipeline);
+                        //dbg!(&pipeline.id);
+
+                        // TODO do this only if onramp connect is successful
+                        // also use try_send here (sync though)
+                        // TODO should be able to send this from specific onramp only?
+                        pipeline
+                            .addr
+                            .clone()
+                            .send(pipeline::Msg::ConnectOnramp(
+                                // out
+                                //from.clone().into(),
+                                // TODO make this generic
+                                "to-onramp".into(),
+                                // /pipeline/main/01/to-onramp
+                                to_linked.clone(),
+                                //
+                                onramp.clone(),
+                            ))
+                            .await;
+                    //.map_err(|e| -> Error {
+                    //    format!("Could not send to pipeline: {}", e).into()
+                    //})?;
+                    } else {
+                        dbg!("NOT FOUND");
+                        return Err(format!(
+                            "Pipeline {:?} not found for linked transports (onramp-side)",
+                            to
+                        )
+                        .into());
                     }
                 } else {
                     return Err("Destination isn't a Pipeline".into());

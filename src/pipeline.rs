@@ -196,7 +196,7 @@ impl Manager {
                         Msg::Response(response) => {
                             //dbg!(&response);
                             // TODO don't hardcode input name here
-                            match pipeline.enqueue("upstream", response, &mut eventset) {
+                            match pipeline.enqueue("from-offramp", response, &mut eventset) {
                                 Ok(()) => {
                                     if let Err(e) = send_events(&mut eventset, &dests).await {
                                         error!("Failed to send response event: {}", e)

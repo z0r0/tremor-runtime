@@ -2,7 +2,7 @@ onramp:
   - id: rest
     type: rest
     config:
-      link: "/pipeline/main/{instance}/upstream"
+      link: "/pipeline/main/{instance}/to-onramp"
       host: 0.0.0.0
       port: 9139
       resources:
@@ -16,29 +16,37 @@ pipeline:
     interface:
       inputs:
         - in
-        - upstream
+        - from-offramp
       outputs:
         - out
         - error
-        - debug
+        - to-onramp
     nodes:
       - id: runtime
         op: runtime::tremor
         config:
           script: |
             event
+      - id: response-processing
+        op: runtime::tremor
+        config:
+          script: |
+            {"response": event}
     links:
       in: [ runtime ]
       runtime: [ out ]
       runtime/error: [ error ]
 
-      upstream: [ debug ]
+      #from-offramp: [ to-onramp ]
+      from-offramp: [ response-processing ]
+      response-processing: [ to-onramp ]
+      response-processing/error: [ error ]
 
 offramp:
   - id: upstream
     type: rest
     config:
-      link: "/pipeline/main/{instance}/upstream"
+      link: "/pipeline/main/{instance}/from-offramp"
       endpoints:
         # TODO flexible endpoints/methods
         - http://localhost:8139/snot
@@ -60,7 +68,7 @@ binding:
       '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
 
       # for debugging
-      '/pipeline/main/{instance}/debug': [ '/offramp/system::stderr/system/in' ]
+      '/pipeline/main/{instance}/to-onramp': [ '/offramp/system::stderr/system/in' ]
 
       # tremor metrics
       #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]

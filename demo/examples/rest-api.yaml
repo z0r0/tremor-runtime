@@ -2,6 +2,7 @@ onramp:
   - id: rest
     type: rest
     config:
+      link: "/pipeline/main/{instance}/to-onramp"
       host: 0.0.0.0
       port: 8139
       resources:
@@ -18,6 +19,7 @@ pipeline:
       outputs:
         - out
         - error
+        - to-onramp
     nodes:
       - id: runtime
         op: runtime::tremor
@@ -34,7 +36,7 @@ pipeline:
             end;
     links:
       in: [ runtime ]
-      runtime: [ out ]
+      runtime: [ out, to-onramp ]
       runtime/error: [ error ]
 
 binding:
