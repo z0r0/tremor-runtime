@@ -6,7 +6,7 @@ onramp:
       host: 0.0.0.0
       port: 9139
       resources:
-        - path: /snot
+        - path: /
           allow:
             - method: GET
               status_code: 204
@@ -26,6 +26,7 @@ pipeline:
         op: runtime::tremor
         config:
           script: |
+            let $endpoint = "http://localhost:8139{event.path}";
             event
       - id: response-processing
         op: runtime::tremor
@@ -49,8 +50,8 @@ offramp:
       link: "/pipeline/main/{instance}/from-offramp"
       endpoints:
         # TODO flexible endpoints/methods
-        - http://localhost:8139/snot
-        #- http://localhost:8139/hello
+        #- http://localhost:8139/snot
+        - http://localhost:8139/hello
       #put: true
       #headers:
       #  "Client": "Tremor"
@@ -68,7 +69,7 @@ binding:
       '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
 
       # for debugging
-      '/pipeline/main/{instance}/to-onramp': [ '/offramp/system::stderr/system/in' ]
+      '/pipeline/main/{instance}/to-onramp': [ '/offramp/system::stdout/system/in' ]
 
       # tremor metrics
       #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]

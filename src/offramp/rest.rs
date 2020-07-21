@@ -112,9 +112,12 @@ impl Rest {
         Ok((d, response))
     }
 
-    fn enqueue_send_future(&mut self, payload: Vec<u8>) -> Result<()> {
-        self.client_idx = (self.client_idx + 1) % self.config.endpoints.len();
-        let destination = self.config.endpoints[self.client_idx].clone();
+    fn enqueue_send_future(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
+        let destination = endpoint.unwrap_or({
+            self.client_idx = (self.client_idx + 1) % self.config.endpoints.len();
+            self.config.endpoints[self.client_idx].clone()
+        });
+        dbg!(&destination);
         let (tx, rx) = bounded(1);
         let config = self.config.clone();
         let pipelines: Vec<(TremorURL, pipeline::Addr)> = self
@@ -198,7 +201,7 @@ impl Rest {
         self.queue.enqueue(rx)?;
         Ok(())
     }
-    fn maybe_enque(&mut self, payload: Vec<u8>) -> Result<()> {
+    fn maybe_enque(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
         match self.queue.dequeue() {
             Err(SinkDequeueError::NotReady) if !self.queue.has_capacity() => {
                 let mut m = Object::new();
@@ -233,7 +236,7 @@ impl Rest {
                 Err("Dropped data due to overload".into())
             }
             _ => {
-                if self.enqueue_send_future(payload).is_err() {
+                if self.enqueue_send_future(payload, endpoint).is_err() {
                     // TODO: handle reply to the pipeline
                     error!("Failed to enqueue send request");
                     Err("Failed to enqueue send request".into())
@@ -249,12 +252,20 @@ impl Offramp for Rest {
     fn on_event(&mut self, codec: &Box<dyn Codec>, _input: String, event: Event) -> Result<()> {
         // TODO this should be configurable?
         let mut payload = Vec::with_capacity(4096);
-        for value in event.value_iter() {
+        let mut endpoint = None;
+        for (value, meta) in event.value_meta_iter() {
+            // TODO better way to handle this?
+            endpoint = Some(
+                meta.get("endpoint")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::from("'endpoint' not set for rest offramp!"))?
+                    .to_string(),
+            );
             let mut raw = codec.encode(value)?;
             payload.append(&mut raw);
             payload.push(b'\n');
         }
-        self.maybe_enque(payload)
+        self.maybe_enque(payload, endpoint)
     }
     fn default_codec(&self) -> &str {
         "json"
