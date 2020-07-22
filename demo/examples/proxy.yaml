@@ -32,7 +32,7 @@ pipeline:
         op: runtime::tremor
         config:
           script: |
-            {"response": event}
+            {"response": event.body}
     links:
       in: [ runtime ]
       runtime: [ out ]

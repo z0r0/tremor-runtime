@@ -16,6 +16,7 @@ use crate::offramp::prelude::*;
 use crossbeam_channel::bounded;
 use halfbrown::HashMap;
 use simd_json::borrowed::Object;
+use simd_json::json;
 use std::str;
 use std::time::Instant;
 use tremor_script::prelude::*;
@@ -35,6 +36,16 @@ pub struct Config {
 }
 
 impl ConfigImpl for Config {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TremorRestResponse {
+    //status: u16,
+    //headers: HashMap<String, String>,
+    //mime: Option<String>,
+    //http_version: String,
+    //body: Vec<u8>,
+    body: String,
+}
 
 pub struct Rest {
     client_idx: usize,
@@ -70,7 +81,7 @@ impl Rest {
         endpoint: &str,
         config: Config,
         payload: Vec<u8>,
-    ) -> Result<(u64, Option<Vec<u8>>)> {
+    ) -> Result<(u64, TremorRestResponse)> {
         let start = Instant::now();
         let c = if config.put {
             surf::put(endpoint)
@@ -94,22 +105,23 @@ impl Rest {
         let mut reply = c.await?;
         let status = reply.status();
 
-        let response = if status.is_client_error() || status.is_server_error() {
+        let body = if status.is_client_error() || status.is_server_error() {
             if let Ok(body) = reply.body_string().await {
                 error!("HTTP request failed: {} => {}", status, body)
             } else {
                 error!("HTTP request failed: {}", status)
             }
-            None
+            //vec![]
+            "".to_string()
         } else {
-            // TODO do this only if linking is present, and only send back to
-            // the linked pipeline
-            let r = reply.body_bytes().await?;
-            Some(r)
+            // TODO switch to bytes
+            //let r = reply.body_bytes().await?;
+            let r = reply.body_string().await?;
+            r
         };
 
         let d = duration_to_millis(start.elapsed());
-        Ok((d, response))
+        Ok((d, TremorRestResponse { body }))
     }
 
     fn enqueue_send_future(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
@@ -132,41 +144,41 @@ impl Rest {
                 m.insert("time".into(), t.into());
 
                 // handling linked transport case
-                if let Some(data) = r {
-                    // TODO apply proper codec based on response
-                    //let response_data = LineValue::new(vec![data], |_| Value::null().into());
-                    //let response = LineValue::try_new(vec![data], |data| {
-                    //    Value::from(std::str::from_utf8(data[0].as_slice())?).into()
-                    //})?;
-                    let response_data = LineValue::try_new(vec![data], |data| {
-                        simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
-                    });
-                    if let Ok(d) = response_data {
-                        let response = Event {
-                            is_batch: false,
-                            id: 0, // TODO better id?
-                            //data: (Value::null(), m).into(),
-                            data: d,
-                            ingest_ns: nanotime(),
-                            origin_uri: None,
-                            kind: None,
+                //dbg!(&r);
+                let data = json!(r).encode().into_bytes();
+                // TODO apply proper codec based on mime
+                //let response_data = LineValue::new(vec![data], |_| Value::null().into());
+                //let response = LineValue::try_new(vec![data], |data| {
+                //    Value::from(std::str::from_utf8(data[0].as_slice())?).into()
+                //})?;
+                let response_data = LineValue::try_new(vec![data], |data| {
+                    simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
+                });
+                if let Ok(d) = response_data {
+                    let response = Event {
+                        is_batch: false,
+                        id: 0, // TODO better id?
+                        //data: (Value::null(), m).into(),
+                        data: d,
+                        ingest_ns: nanotime(),
+                        origin_uri: None, // TODO set based on response
+                        kind: None,
+                    };
+                    dbg!(&response);
+                    // TODO send only to the linked pipeline
+                    for (pid, p) in &pipelines {
+                        // TODO adopt try_send everywhere?
+                        // TODO avoid clone here
+                        if p.addr
+                            .try_send(pipeline::Msg::Response(response.clone()))
+                            .is_err()
+                        {
+                            error!("Failed to send response to pipeline {}", pid)
                         };
-                        dbg!(&response);
-                        // TODO send only to the linked pipeline
-                        for (pid, p) in &pipelines {
-                            // TODO adopt try_send everywhere?
-                            // TODO avoid clone here
-                            if p.addr
-                                .try_send(pipeline::Msg::Response(response.clone()))
-                                .is_err()
-                            {
-                                error!("Failed to send response to pipeline {}", pid)
-                            };
-                        }
-                    } else {
-                        //error!("REST offramp error: {:?}", response_data);
-                        error!("REST offramp error: could not convert response to line value");
                     }
+                } else {
+                    //error!("REST offramp error: {:?}", response_data);
+                    error!("REST offramp error: could not convert response to line value");
                 }
             } else {
                 error!("REST offramp error: {:?}", result);

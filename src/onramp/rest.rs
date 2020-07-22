@@ -174,7 +174,7 @@ async fn onramp_loop(
                     let link_rx = state.link_rx.clone();
                     let url = req.url().clone();
 
-                    let response = TremorRestRequest {
+                    let request = TremorRestRequest {
                         path: url.path().to_string(),
                         actual_path: String::default(), // TODO
                         query_params: url.query().unwrap_or("").to_string(),
@@ -196,10 +196,10 @@ async fn onramp_loop(
                     };
 
                     //dbg!(req.url().to_string());
-                    //dbg!(&response);
+                    //dbg!(&request);
 
                     // TODO check for failure?
-                    tx.send((origin_uri, response)).await;
+                    tx.send((origin_uri, request)).await;
 
                     let event = link_rx.recv().await?;
                     //dbg!("BEFORE RESPONSE");
