@@ -39,7 +39,7 @@ impl ConfigImpl for Config {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TremorRestResponse {
-    //status: u16,
+    status: u16,
     //headers: HashMap<String, String>,
     //mime: Option<String>,
     //http_version: String,
@@ -121,7 +121,13 @@ impl Rest {
         };
 
         let d = duration_to_millis(start.elapsed());
-        Ok((d, TremorRestResponse { body }))
+        Ok((
+            d,
+            TremorRestResponse {
+                body,
+                status: status.into(),
+            },
+        ))
     }
 
     fn enqueue_send_future(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
