@@ -26,8 +26,15 @@ pipeline:
         op: runtime::tremor
         config:
           script: |
-            let $endpoint = "http://localhost:8139{event.path}";
-            event
+            match event of
+              # don't proxy for ping requests
+              # TODO need to support this usecase
+              case %{path == "/ping"} =>
+                emit "pong" => "to-onramp"
+              default =>
+                let $endpoint = "http://localhost:8139{event.path}",
+                emit event
+            end
       - id: response-processing
         op: runtime::tremor
         config:
