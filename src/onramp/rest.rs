@@ -209,21 +209,28 @@ async fn onramp_loop(
                     //for value in event.value_iter() {
                     //    dbg!(&value.encode());
                     //}
-                    let event_data = event.value_iter().next().unwrap();
+                    let (event_data, meta) = event.value_meta_iter().next().unwrap();
                     //dbg!(&event_data);
+                    //dbg!(&meta);
 
                     let mut event_bytes = Vec::new();
                     event_data.write(&mut event_bytes)?;
 
                     //let event_data = format!("Hello from {}!", &req.state().config.host);
 
-                    let status = match req.method() {
-                        // TODO enable GET only for linked transport usecase...
-                        Method::Get => 200,
-                        Method::Post => 201,
-                        Method::Delete => 200,
-                        _ => 204,
-                    };
+                    let status = meta
+                        .get("status")
+                        .and_then(|s| s.as_u16())
+                        .unwrap_or_else(|| {
+                            match req.method() {
+                                // TODO enable GET only for linked transport usecase...
+                                Method::Get => 200,
+                                Method::Post => 201,
+                                Method::Delete => 200,
+                                _ => 204,
+                            }
+                        });
+
                     let mut res = Response::new(status);
                     //res.set_body(Body::from_string("".to_string()));
                     //res.set_body(Body::from_string(event_data.encode()));
