@@ -40,8 +40,10 @@ impl ConfigImpl for Config {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TremorRestResponse {
     status: u16,
+    // TODO implement once https://github.com/http-rs/surf/pull/191/files is merged
     //headers: HashMap<String, String>,
-    //mime: Option<String>,
+    mime: Option<String>,
+    // TODO would this be useful?
     //http_version: String,
     //body: Vec<u8>,
     body: String,
@@ -104,6 +106,7 @@ impl Rest {
 
         let mut reply = c.await?;
         let status = reply.status();
+        let mime = reply.mime().map(|m| m.to_string());
 
         let body = if status.is_client_error() || status.is_server_error() {
             if let Ok(body) = reply.body_string().await {
@@ -126,6 +129,7 @@ impl Rest {
             TremorRestResponse {
                 body,
                 status: status.into(),
+                mime,
             },
         ))
     }

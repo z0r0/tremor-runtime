@@ -43,7 +43,8 @@ pipeline:
             #  "body": event.body,
             #  "status": event.status
             #}
-            #let event.status = 404;
+            # dummy example for response status override
+            let event.status = 404;
             event
     links:
       in: [ runtime ]
