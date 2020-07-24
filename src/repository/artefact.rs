@@ -410,9 +410,6 @@ impl Artefact for OnrampArtefact {
                         onramp
                             .send(onramp::Msg::Connect(vec![(to.clone(), pipeline)]))
                             .await;
-
-                        dbg!("hello here");
-                        dbg!(&to);
                     } else {
                         //dbg!("NOT FOUND");
                         return Err(format!("Pipeline {:?} not found", to).into());

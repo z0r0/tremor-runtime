@@ -133,11 +133,11 @@ impl Manager {
         ) -> Result<()> {
             for (output, event) in eventset.drain(..) {
                 if let Some(dest) = dests.get(&output) {
-                    dbg!(&dest);
+                    //dbg!(&dest);
                     let len = dest.len();
                     //We know we have len, so grabbing len - 1 elementsis safe
                     for (id, offramp) in unsafe { dest.get_unchecked(..len - 1) } {
-                        dbg!("more that one elem", &id.to_string());
+                        //dbg!("more that one elem", &id.to_string());
                         offramp
                             .send_event(
                                 id.instance_port()
@@ -152,7 +152,7 @@ impl Manager {
                     }
                     //We know we have len, so grabbing the last elementsis safe
                     let (id, offramp) = unsafe { dest.get_unchecked(len - 1) };
-                    dbg!("last elem", &id.to_string());
+                    //dbg!("last elem", &id.to_string());
                     offramp
                         .send_event(
                             id.instance_port()
@@ -248,7 +248,6 @@ impl Manager {
                         }
                         // TODO can we make this work without this?
                         Msg::ConnectOnramp(output, onramp_id, onramp) => {
-                            println!("ONRAMP CONNECTION");
                             info!(
                                 "[Pipeline:{}] connecting {} to onramp {}",
                                 id, output, onramp_id
