@@ -254,9 +254,9 @@ async fn onramp_loop(
                 PipeHandlerResult::Retry => continue,
                 PipeHandlerResult::Terminate => return Ok(()),
                 PipeHandlerResult::Normal => break,
-                PipeHandlerResult::Response(event) => {
+                PipeHandlerResult::Response(_event) => {
                     dbg!("FROM PIPELINE (HP)");
-                    dbg!(&event);
+                    //dbg!(&event);
                     // TODO might want to continue here?
                     break;
                 }
@@ -288,7 +288,7 @@ async fn onramp_loop(
                     PipeHandlerResult::Retry | PipeHandlerResult::Normal => continue,
                     PipeHandlerResult::Terminate => break,
                     PipeHandlerResult::Response(event) => {
-                        //dbg!("FROM PIPELINE (HPM)");
+                        dbg!("FROM PIPELINE (HPM)");
                         //dbg!(&event);
                         link_tx.send(event).await;
                         continue;

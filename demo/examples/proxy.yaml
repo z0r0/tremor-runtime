@@ -31,6 +31,9 @@ pipeline:
               # TODO need to support this usecase
               case %{path == "/ping"} =>
                 emit "pong" => "to-onramp"
+              case %{path == "/hello"} =>
+                let $endpoint = "http://localhost:8140{event.path}",
+                emit event
               default =>
                 let $endpoint = "http://localhost:8139{event.path}",
                 emit event

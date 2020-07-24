@@ -174,7 +174,7 @@ impl Rest {
                         origin_uri: None, // TODO set based on response
                         kind: None,
                     };
-                    dbg!(&response);
+                    //dbg!(&response);
                     // TODO send only to the linked pipeline
                     for (pid, p) in &pipelines {
                         // TODO adopt try_send everywhere?
