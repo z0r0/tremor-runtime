@@ -134,7 +134,12 @@ impl Rest {
         ))
     }
 
-    fn enqueue_send_future(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
+    fn enqueue_send_future(
+        &mut self,
+        event_id: u64,
+        payload: Vec<u8>,
+        endpoint: Option<String>,
+    ) -> Result<()> {
         let destination = endpoint.unwrap_or({
             self.client_idx = (self.client_idx + 1) % self.config.endpoints.len();
             self.config.endpoints[self.client_idx].clone()
@@ -167,7 +172,8 @@ impl Rest {
                 if let Ok(d) = response_data {
                     let response = Event {
                         is_batch: false,
-                        id: 0, // TODO better id?
+                        //id: 0, // TODO better id?
+                        id: event_id,
                         //data: (Value::null(), m).into(),
                         data: d,
                         ingest_ns: nanotime(),
@@ -223,7 +229,12 @@ impl Rest {
         self.queue.enqueue(rx)?;
         Ok(())
     }
-    fn maybe_enque(&mut self, payload: Vec<u8>, endpoint: Option<String>) -> Result<()> {
+    fn maybe_enque(
+        &mut self,
+        event_id: u64,
+        payload: Vec<u8>,
+        endpoint: Option<String>,
+    ) -> Result<()> {
         match self.queue.dequeue() {
             Err(SinkDequeueError::NotReady) if !self.queue.has_capacity() => {
                 let mut m = Object::new();
@@ -258,7 +269,10 @@ impl Rest {
                 Err("Dropped data due to overload".into())
             }
             _ => {
-                if self.enqueue_send_future(payload, endpoint).is_err() {
+                if self
+                    .enqueue_send_future(event_id, payload, endpoint)
+                    .is_err()
+                {
                     // TODO: handle reply to the pipeline
                     error!("Failed to enqueue send request");
                     Err("Failed to enqueue send request".into())
@@ -275,6 +289,7 @@ impl Offramp for Rest {
         // TODO this should be configurable?
         let mut payload = Vec::with_capacity(4096);
         let mut endpoint = None;
+        //dbg!(&event.id);
         for (value, meta) in event.value_meta_iter() {
             // TODO better way to handle this?
             endpoint = Some(
@@ -287,7 +302,7 @@ impl Offramp for Rest {
             payload.append(&mut raw);
             payload.push(b'\n');
         }
-        self.maybe_enque(payload, endpoint)
+        self.maybe_enque(event.id, payload, endpoint)
     }
     fn default_codec(&self) -> &str {
         "json"

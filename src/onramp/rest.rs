@@ -15,6 +15,7 @@
 use crate::onramp::prelude::*;
 use async_std::sync::Sender;
 //use futures::{select, FutureExt, StreamExt};
+//use async_std::sync::{Arc, Mutex};
 use futures::{select, FutureExt};
 use halfbrown::HashMap;
 use serde_yaml::Value;
@@ -122,13 +123,14 @@ pub struct TremorRestRequest {
     method: String,
 }
 
-type RestOnrampMessage = (EventOriginUri, TremorRestRequest);
+type RestOnrampMessage = (EventOriginUri, TremorRestRequest, Sender<Event>);
 
-#[derive(Clone)]
+//#[derive(Clone)]
 struct OnrampState {
     tx: Sender<RestOnrampMessage>,
-    link_rx: Receiver<Event>,
-    config: Config,
+    //link_rx: Receiver<Event>,
+    //config: Config,
+    //event_id: Arc<Mutex<u64>>,
 }
 
 // We got to allow this because of the way that the onramp works
@@ -144,7 +146,9 @@ async fn onramp_loop(
 ) -> Result<()> {
     let (loop_tx, loop_rx) = channel(64);
 
-    let (link_tx, link_rx) = channel(1);
+    //let (link_tx, link_rx) = channel(1);
+
+    let mut link_txes = HashMap::new();
 
     let addr = format!("{}:{}", config.host, config.port);
 
@@ -160,8 +164,9 @@ async fn onramp_loop(
         .spawn(async move {
             let mut server = tide::Server::with_state(OnrampState {
                 tx: loop_tx,
-                link_rx,
-                config,
+                //link_rx,
+                //config,
+                //event_id: Arc::new(Mutex::new(0)),
             });
             server
                 // TODO does not cover /. also support other methods
@@ -171,8 +176,19 @@ async fn onramp_loop(
 
                     // TODO is clone necessary?
                     let tx = state.tx.clone();
-                    let link_rx = state.link_rx.clone();
+                    //let link_rx = state.link_rx.clone();
                     let url = req.url().clone();
+
+                    /*
+                    let event_id = state.event_id.clone();
+
+                    let mut current_event_id = event_id.lock().await;
+                    *current_event_id += 1;
+                    //dbg!(&current_event_id);
+                    //state.event_id += 1;
+                    //event_id += 1;
+                    //dbg!(event_id.into_inner());
+                    */
 
                     let request = TremorRestRequest {
                         path: url.path().to_string(),
@@ -198,8 +214,14 @@ async fn onramp_loop(
                     //dbg!(req.url().to_string());
                     //dbg!(&request);
 
+                    //id2 += 1;
+                    //let (link_tx, link_rx) = channel(1);
+                    //link_tx_rx.insert(id, (link_tx, link_rx));
+
+                    let (link_tx, link_rx) = channel(1);
+
                     // TODO check for failure?
-                    tx.send((origin_uri, request)).await;
+                    tx.send((origin_uri, request, link_tx)).await;
 
                     let event = link_rx.recv().await?;
                     //dbg!("BEFORE RESPONSE");
@@ -265,11 +287,16 @@ async fn onramp_loop(
         //println!("after handle pipelines");
 
         select! {
-            msg = loop_rx.recv().fuse() => if let Ok((origin_uri, data)) = msg {
+                msg = loop_rx.recv().fuse() => if let Ok((origin_uri, data, link_tx)) = msg {
                 //dbg!(&data);
                 let data = json!(data).encode().into_bytes();
                 let mut ingest_ns = nanotime();
                 id += 1;
+                //dbg!(&id);
+                //dbg!(&event_id);
+                //dbg!(&link_tx);
+                link_txes.insert(id, link_tx);
+
                 send_event(
                     &pipelines,
                     //&mut no_pp,
@@ -289,8 +316,10 @@ async fn onramp_loop(
                     PipeHandlerResult::Terminate => break,
                     PipeHandlerResult::Response(event) => {
                         //dbg!("FROM PIPELINE (HPM)");
-                        //dbg!(&event);
-                        link_tx.send(event).await;
+                        dbg!(&event.id);
+                        //dbg!(&link_txes.get(&event.id));
+                        link_txes.get(&event.id).unwrap().send(event).await;
+                        //link_tx.send(event).await;
                         continue;
                     }
                 }
