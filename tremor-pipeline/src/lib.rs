@@ -134,7 +134,7 @@ pub struct Event {
     pub data: tremor_script::LineValue,
     /// Nanoseconds at when the event was ingested
     pub ingest_ns: u64,
-    /// URI to identify the origin of th event
+    /// URI to identify the origin of the event
     pub origin_uri: Option<tremor_script::EventOriginUri>,
     /// The kind of the event
     pub kind: Option<SignalKind>,

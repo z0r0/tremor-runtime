@@ -48,7 +48,7 @@ pipeline:
             #}
             # can override this with something else
             #let $status = 404;
-            let $status = event.status;
+            # status is already set as part of event meta based on the response
             event
     links:
       in: [ runtime ]

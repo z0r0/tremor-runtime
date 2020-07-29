@@ -244,6 +244,7 @@ async fn onramp_loop(
                         .get("status")
                         .and_then(|s| s.as_u16())
                         .unwrap_or_else(|| {
+                            println!("Could not find status in the event meta");
                             match req.method() {
                                 // TODO enable GET only for linked transport usecase...
                                 Method::Get => 200,

@@ -16,7 +16,7 @@ use crate::offramp::prelude::*;
 use crossbeam_channel::bounded;
 use halfbrown::HashMap;
 use simd_json::borrowed::Object;
-use simd_json::json;
+//use simd_json::json;
 use std::str;
 use std::time::Instant;
 use tremor_script::prelude::*;
@@ -45,8 +45,8 @@ pub struct TremorRestResponse {
     mime: Option<String>,
     // TODO would this be useful?
     //http_version: String,
-    //body: Vec<u8>,
-    body: String,
+    body: Vec<u8>,
+    //body: String,
 }
 
 pub struct Rest {
@@ -114,12 +114,11 @@ impl Rest {
             } else {
                 error!("HTTP request failed: {}", status)
             }
-            //vec![]
-            "".to_string()
+            //"".to_string()
+            vec![]
         } else {
-            // TODO switch to bytes
-            //let r = reply.body_bytes().await?;
-            let r = reply.body_string().await?;
+            //let r = reply.body_string().await?;
+            let r = reply.body_bytes().await?;
             r
         };
 
@@ -160,14 +159,21 @@ impl Rest {
 
                 // handling linked transport case
                 //dbg!(&r);
-                let data = json!(r).encode().into_bytes();
-                // TODO apply proper codec based on mime
+                //let data = json!(r).encode().into_bytes();
+                //let data = r.body.into_bytes();
+                let data = r.body;
+                // TODO apply proper codec based on r.mime. also allow pass-through without decoding
                 //let response_data = LineValue::new(vec![data], |_| Value::null().into());
                 //let response = LineValue::try_new(vec![data], |data| {
                 //    Value::from(std::str::from_utf8(data[0].as_slice())?).into()
                 //})?;
+                let mut event_meta = Value::object();
+                event_meta.insert("status", r.status).unwrap();
+                //dbg!(&event_meta);
                 let response_data = LineValue::try_new(vec![data], |data| {
-                    simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
+                    //simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
+                    simd_json::to_borrowed_value(&mut data[0])
+                        .map(|v| ValueAndMeta::from_parts(v, event_meta))
                 });
                 if let Ok(d) = response_data {
                     let response = Event {
