@@ -1,0 +1,43 @@
+# https://hub.docker.com/_/centos
+FROM centos:6.6
+
+# to get the needed source code
+# (nss update resolves ssl issues during downloads)
+RUN yum install --assumeyes nss curl tar
+
+# extra repo needed for deps like clang/libmpc-devel
+RUN yum install --assumeyes epel-release
+
+# install build essentials
+RUN yum install --assumeyes gcc gcc-c++
+
+# compile gcc9 (can't just use devtoolset-9 for our deps)
+# https://gcc.gnu.org/install/prerequisites.html
+RUN yum install --assumeyes gmp-devel mpfr-devel libmpc-devel \
+  && temp_dir=$(mktemp -d) \
+  && cd $temp_dir \
+  && curl -L http://ftpmirror.gnu.org/gnu/gcc/gcc-9.3.0/gcc-9.3.0.tar.gz | tar --strip-components=1 -xz \
+  && ./configure --disable-multilib --enable-languages=c,c++ --prefix=/usr/local \
+  && make -j$(nproc) \
+  && make -j install \
+  && rm -rf $temp_dir
+ENV LD_LIBRARY_PATH="/usr/local/lib64:${LD_LIBRARY_PATH}"
+
+# compile cmake >=3.8.2 (needed for snmalloc)
+RUN temp_dir=$(mktemp -d) \
+  && cd $temp_dir \
+  && curl -L https://github.com/Kitware/CMake/releases/download/v3.18.1/cmake-3.18.1.tar.gz | tar --strip-components=1 -xz \
+  && ./bootstrap --prefix=/usr/local -- -DCMAKE_USE_OPENSSL=OFF \
+  && make -j$(nproc) \
+  && make -j install \
+  && rm -rf $temp_dir
+
+# install rust
+ARG RUST_VERSION
+RUN curl --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh \
+    && sh rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION \
+    && rm rustup-init.sh
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# install other system deps
+RUN yum install --assumeyes clang openssl-devel
