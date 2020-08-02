@@ -120,9 +120,6 @@ neon = [ "simd-json/neon" ]
 gcp = [ "google-storage1", "google-pubsub1", "hyper-rustls", "yup-oauth2", "hyper" ]
 
 [patch.crates-io]
-# https://github.com/SchrodingerZhu/snmalloc-rs/compare/master...anupdhml:custom_lib_path
-# TODO ensure that we don't have to use snmalloc-rs from a personal fork
-snmalloc-rs = { git = "https://github.com/anupdhml/snmalloc-rs", branch = "custom_lib_path" }
 
 # for use during debian packaging, via cargo-deb
 # https://github.com/mmstick/cargo-deb#packagemetadatadeb-options

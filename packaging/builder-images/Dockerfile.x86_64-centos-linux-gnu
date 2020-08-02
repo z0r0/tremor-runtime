@@ -8,7 +8,7 @@ RUN yum install --assumeyes nss curl tar
 # extra repo needed for deps like clang/libmpc-devel
 RUN yum install --assumeyes epel-release
 
-# install build essentials
+# install gcc
 RUN yum install --assumeyes gcc gcc-c++
 
 # compile gcc9 (can't just use devtoolset-9 for our deps)
@@ -23,6 +23,12 @@ RUN yum install --assumeyes gmp-devel mpfr-devel libmpc-devel \
   && rm -rf $temp_dir
 ENV LD_LIBRARY_PATH="/usr/local/lib64:${LD_LIBRARY_PATH}"
 
+# remove old gcc now that we have new one
+RUN yum remove --assumeyes gcc gcc-c++
+
+# placeholder for cc (similar to what gcc package did for /usr/bin/gcc)
+RUN ln -s /usr/local/bin/gcc /usr/local/bin/cc
+
 # compile cmake >=3.8.2 (needed for snmalloc)
 RUN temp_dir=$(mktemp -d) \
   && cd $temp_dir \
@@ -32,12 +38,14 @@ RUN temp_dir=$(mktemp -d) \
   && make -j install \
   && rm -rf $temp_dir
 
+# install other system deps
+RUN yum install --assumeyes clang openssl-devel
+
+RUN yum clean all
+
 # install rust
 ARG RUST_VERSION
 RUN curl --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh \
     && sh rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION \
     && rm rustup-init.sh
 ENV PATH="/root/.cargo/bin:${PATH}"
-
-# install other system deps
-RUN yum install --assumeyes clang openssl-devel
