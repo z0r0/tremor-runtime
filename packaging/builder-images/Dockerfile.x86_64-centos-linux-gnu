@@ -39,7 +39,9 @@ RUN temp_dir=$(mktemp -d) \
   && rm -rf $temp_dir
 
 # install other system deps
-RUN yum install --assumeyes clang openssl-devel
+RUN yum install --assumeyes \
+  clang `# for onig_sys (via the regex crate)` \
+  perl  `# for compiling openssl (as part of openssl crate's vendored feature)`
 
 RUN yum clean all
 

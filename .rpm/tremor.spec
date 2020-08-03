@@ -38,14 +38,6 @@ Requires: glibc >= 2.12
 # via snmalloc
 Requires: libstdc++
 Requires: libatomic
-# via surf
-Requires: libssl
-# via surf
-Requires: libcurl
-# via surf and rdkafka. provides libz
-Requires: zlib
-# via xz2 (in tremor-script). provides liblzma
-Requires: xz
 
 # for user/group creation
 Requires(post): shadow-utils
