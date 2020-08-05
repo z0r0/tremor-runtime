@@ -46,8 +46,16 @@ RUN yum install --assumeyes \
 RUN yum clean all
 
 # install rust
-ARG RUST_VERSION
-RUN curl --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh \
-    && sh rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION \
-    && rm rustup-init.sh
-ENV PATH="/root/.cargo/bin:${PATH}"
+# this is not needed right now since we are using this image from cross and
+# it already shares rust from the host to the image container. also saves us
+# from needing to update this image to keep up with rust version releases.
+#
+# TODO the cargo bin path is also not readable by cross docker user
+#ARG RUST_VERSION
+#RUN curl --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh \
+#    && sh rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION \
+#    && rm rustup-init.sh
+#ENV PATH="/root/.cargo/bin:${PATH}"
+
+COPY shared/entrypoint.sh /
+ENTRYPOINT [ "/entrypoint.sh" ]

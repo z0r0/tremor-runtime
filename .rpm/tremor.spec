@@ -32,8 +32,8 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires: systemd
 %endif
 
-# based on centos6 image
-Requires: glibc >= 2.12
+# based on centos7 image
+Requires: glibc >= 2.17
 # TODO link to these statically?
 # via snmalloc
 Requires: libstdc++

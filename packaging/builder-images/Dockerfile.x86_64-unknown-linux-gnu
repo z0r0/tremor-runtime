@@ -7,3 +7,6 @@ FROM rust:${RUST_VERSION}-buster
 
 COPY shared/install_dependencies_debian.sh /
 RUN /install_dependencies_debian.sh
+
+COPY shared/entrypoint.sh /
+ENTRYPOINT [ "/entrypoint.sh" ]
