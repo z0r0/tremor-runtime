@@ -33,6 +33,7 @@ BuildRequires: systemd
 %endif
 
 # based on centos7 image
+# keep this in sync with the deb dependencies (in Cargo.toml)
 Requires: glibc >= 2.17
 # TODO link to these statically?
 # via snmalloc

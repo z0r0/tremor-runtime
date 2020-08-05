@@ -135,7 +135,8 @@ static-ssl = ["openssl/vendored"]
 [package.metadata.deb]
 name = "tremor"
 section = "net"
-depends = "$auto"
+# keep this in sync with the rpm dependencies (in rpm spec file)
+depends = "libc6 (>= 2.17), libstdc++6, libatomic1"
 maintainer-scripts = "packaging/distribution/debian/maintainer-scripts/"
 assets = [
   # target path will be automatically corrected when cross-compiling
