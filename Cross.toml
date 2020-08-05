@@ -36,10 +36,5 @@ xargo = false # cross uses xargo for non-standard targets normally, but we don't
 image = "tremorproject/tremor-builder:x86_64-alpine-linux-musl"
 
 [target.x86_64-unknown-linux-gnu]
-#image = "tremorproject/tremor-builder:x86_64-unknown-linux-gnu"
-#
-# TODO tag centos7 image as x86_64-unknown-linux-gnu?
-# (assuming the centos based image produces equally efficient binaries as the current
-# x86_64-unknown-linux-gnu which is based on debian buster)
+image = "tremorproject/tremor-builder:x86_64-unknown-linux-gnu"
 #image = "tremorproject/tremor-builder:x86_64-centos-linux-gnu.centos6"
-image = "tremorproject/tremor-builder:x86_64-unknown-linux-gnu.centos7"

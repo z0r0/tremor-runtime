@@ -125,7 +125,7 @@ gcp = [ "google-storage1", "google-pubsub1", "hyper-rustls", "yup-oauth2", "hype
 
 # for compiling and statically linking to openssl. helps us create more
 # portable builds by side-stepping issues with openssl dynamic linking
-# (eg: latest version of openssl not available in old distros like centos 6)
+# (eg: latest version of openssl not available in old distros like centos 7)
 static-ssl = ["openssl/vendored"]
 
 [patch.crates-io]
