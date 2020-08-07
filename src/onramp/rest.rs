@@ -235,8 +235,17 @@ async fn onramp_loop(
                     //dbg!(&event_data);
                     //dbg!(&meta);
 
-                    let mut event_bytes = Vec::new();
-                    event_data.write(&mut event_bytes)?;
+                    // TODO also ensure response headers are also set right
+                    // as json
+                    //let mut event_bytes = Vec::new();
+                    //event_data.write(&mut event_bytes)?;
+                    // as string
+                    let event_bytes = if let Some(s) = event_data.as_str() {
+                        s.as_bytes().to_vec()
+                    } else {
+                        println!("Data not as str");
+                        simd_json::to_vec(&event_data)?
+                    };
 
                     //let event_data = format!("Hello from {}!", &req.state().config.host);
 

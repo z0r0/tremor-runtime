@@ -170,10 +170,15 @@ impl Rest {
                 let mut event_meta = Value::object();
                 event_meta.insert("status", r.status).unwrap();
                 //dbg!(&event_meta);
+                // as json
+                //let response_data = LineValue::try_new(vec![data], |data| {
+                //    simd_json::to_borrowed_value(&mut data[0])
+                //        .map(|v| ValueAndMeta::from_parts(v, event_meta))
+                //});
+                // as string
                 let response_data = LineValue::try_new(vec![data], |data| {
-                    //simd_json::to_borrowed_value(&mut data[0]).map(ValueAndMeta::from)
-                    simd_json::to_borrowed_value(&mut data[0])
-                        .map(|v| ValueAndMeta::from_parts(v, event_meta))
+                    std::str::from_utf8(data[0].as_slice())
+                        .map(|v| ValueAndMeta::from_parts(Value::from(v), event_meta))
                 });
                 if let Ok(d) = response_data {
                     let response = Event {
@@ -200,6 +205,7 @@ impl Rest {
                     }
                 } else {
                     //error!("REST offramp error: {:?}", response_data);
+                    // TODO generate a failure event back to pipeline in this case
                     error!("REST offramp error: could not convert response to line value");
                 }
             } else {
