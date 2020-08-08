@@ -37,7 +37,7 @@ mod prelude;
 mod rest;
 //pub mod tcp;
 //mod udp;
-//mod ws;
+mod ws;
 
 pub(crate) type Sender = sync::Sender<ManagerMsg>;
 
@@ -87,7 +87,7 @@ pub(crate) fn lookup(name: &str, config: &Option<Value>) -> Result<Box<dyn Onram
         //"udp" => udp::Udp::from_config(config),
         //"tcp" => tcp::Tcp::from_config(config),
         "rest" => rest::Rest::from_config(config),
-        //"ws" => ws::Ws::from_config(config),
+        "ws" => ws::Ws::from_config(config),
         _ => Err(format!("Onramp {} not known", name).into()),
     }
 }

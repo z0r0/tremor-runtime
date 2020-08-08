@@ -15,7 +15,9 @@
 use crate::onramp::prelude::*;
 use async_std::sync::Sender;
 use futures::{select, FutureExt, StreamExt};
+use halfbrown::HashMap;
 use serde_yaml::Value;
+use simd_json::prelude::*;
 use tungstenite::protocol::Message;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -41,11 +43,12 @@ impl onramp::Impl for Ws {
     }
 }
 enum WsOnrampMessage {
-    Data(u64, EventOriginUri, Vec<u8>),
+    Data(u64, EventOriginUri, Vec<u8>, Sender<Event>),
 }
 
 use async_std::net::{TcpListener, TcpStream};
 use async_std::task;
+use futures_util::sink::SinkExt;
 
 async fn handle_connection(
     loop_tx: Sender<WsOnrampMessage>,
@@ -68,14 +71,36 @@ async fn handle_connection(
                 let mut ingest_ns = nanotime();
                 if let Ok(data) = handle_pp(&mut preprocessors, &mut ingest_ns, t.into_bytes()) {
                     for d in data {
+                        let (link_tx, link_rx) = channel(1);
+
                         loop_tx
                             .send(WsOnrampMessage::Data(
                                 ingest_ns,
                                 // TODO possible to avoid clone here? we clone again inside send_event
                                 origin_uri.clone(),
                                 d,
+                                link_tx,
                             ))
                             .await;
+
+                        let event = link_rx.recv().await?;
+                        let (event_data, _meta) = event.value_meta_iter().next().unwrap();
+
+                        // as json
+                        //let mut event_bytes = Vec::new();
+                        //event_data.write(&mut event_bytes)?;
+                        // as string
+                        let event_text = if let Some(s) = event_data.as_str() {
+                            //s.as_bytes().to_vec()
+                            s.to_string()
+                        } else {
+                            println!("Data not as str (message text)");
+                            //simd_json::to_vec(&event_data)?
+                            "Invalid Data (not str)".to_string()
+                        };
+
+                        //ws_stream.start_send(msg);
+                        ws_stream.send(Message::Text(event_text)).await?;
                     }
                 }
             }
@@ -83,14 +108,36 @@ async fn handle_connection(
                 let mut ingest_ns = nanotime();
                 if let Ok(data) = handle_pp(&mut preprocessors, &mut ingest_ns, b) {
                     for d in data {
+                        let (link_tx, link_rx) = channel(1);
+
                         loop_tx
                             .send(WsOnrampMessage::Data(
                                 ingest_ns,
                                 // TODO possible to avoid clone here? we clone again inside send_event
                                 origin_uri.clone(),
                                 d,
+                                link_tx,
                             ))
                             .await;
+
+                        let event = link_rx.recv().await?;
+                        let (event_data, _meta) = event.value_meta_iter().next().unwrap();
+
+                        // as json
+                        //let mut event_bytes = Vec::new();
+                        //event_data.write(&mut event_bytes)?;
+                        // as string
+                        let event_bytes = if let Some(s) = event_data.as_str() {
+                            s.as_bytes().to_vec()
+                        } else {
+                            println!("Data not as str (message bin)");
+                            simd_json::to_vec(&event_data)?
+                        };
+
+                        //ws_stream
+                        //    .send(Message::Binary("test binary message".into()))
+                        //    .await?;
+                        ws_stream.send(Message::Binary(event_bytes)).await?;
                     }
                 }
             }
@@ -113,6 +160,8 @@ async fn onramp_loop(
 ) -> Result<()> {
     let (loop_tx, loop_rx) = channel(64);
 
+    let mut link_txes = HashMap::new();
+
     let addr = format!("{}:{}", config.host, config.port);
 
     let mut pipelines = Vec::new();
@@ -129,6 +178,12 @@ async fn onramp_loop(
                 PipeHandlerResult::Retry => continue,
                 PipeHandlerResult::Terminate => return Ok(()),
                 PipeHandlerResult::Normal => break,
+                PipeHandlerResult::Response(_event) => {
+                    dbg!("FROM PIPELINE (HP)");
+                    //dbg!(&event);
+                    // TODO might want to continue here?
+                    break;
+                }
             }
         }
 
@@ -138,8 +193,9 @@ async fn onramp_loop(
 
                 task::spawn(handle_connection(loop_tx.clone(), stream, preprocessors));
             },
-            msg = loop_rx.recv().fuse() => if let Ok(WsOnrampMessage::Data(mut ingest_ns, origin_uri, data)) = msg {
+            msg = loop_rx.recv().fuse() => if let Ok(WsOnrampMessage::Data(mut ingest_ns, origin_uri, data, link_tx)) = msg {
                 id += 1;
+                link_txes.insert(id, link_tx);
                 send_event(
                     &pipelines,
                     &mut no_pp,
@@ -155,6 +211,11 @@ async fn onramp_loop(
                 match handle_pipelines_msg(msg, &mut pipelines, &mut metrics_reporter)? {
                     PipeHandlerResult::Retry | PipeHandlerResult::Normal => continue,
                     PipeHandlerResult::Terminate => break,
+                    PipeHandlerResult::Response(event) => {
+                        //dbg!("FROM PIPELINE (HPM)");
+                        link_txes.get(&event.id).unwrap().send(event).await;
+                        continue;
+                    }
                 }
             }
         }

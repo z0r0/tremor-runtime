@@ -105,6 +105,9 @@ grok = "1"
 # rest onramp
 tide = "0.11"
 
+# ws onramp
+futures-util = "0.3.5"
+
 [dependencies.tungstenite]
 version = "0.11"
 default-features = false

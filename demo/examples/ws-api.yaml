@@ -1,0 +1,51 @@
+onramp:
+  - id: ws
+    type: ws
+    preprocessors:
+      - lines
+    codec: string
+    config:
+      link: "/pipeline/main/{instance}/to-onramp"
+      host: 127.0.0.1
+      port: 8139
+
+pipeline:
+  - id: main
+    interface:
+      inputs:
+        - in
+      outputs:
+        - out
+        - error
+        - to-onramp
+    nodes:
+      - id: runtime
+        op: runtime::tremor
+        config:
+          script: |
+            match event of
+              case "snot" => "badger"
+              default => event
+            end
+    links:
+      in: [ runtime ]
+      runtime: [ out, to-onramp ]
+      runtime/error: [ error ]
+
+binding:
+  - id: default
+    links:
+      '/onramp/ws/{instance}/out': [ '/pipeline/main/{instance}/in' ]
+
+      '/pipeline/main/{instance}/out': [ '/offramp/system::stdout/system/in' ]
+      #'/pipeline/main/{instance}/out':
+      #  - '/offramp/system::stdout/system/in'
+      #  - '/onramp/ws/{instance}/response'
+
+      '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
+
+      # tremor metrics
+      #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]
+mapping:
+  /binding/default/01:
+    instance: '01'

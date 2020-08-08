@@ -4927,6 +4927,7 @@ dependencies = [
  "env_logger",
  "error-chain 0.12.4",
  "futures 0.3.5",
+ "futures-util",
  "glob",
  "google-pubsub1",
  "google-storage1",
