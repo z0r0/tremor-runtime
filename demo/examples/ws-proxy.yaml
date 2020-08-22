@@ -1,0 +1,82 @@
+onramp:
+  - id: ws
+    type: ws
+    preprocessors:
+      - lines
+    config:
+      link: "/pipeline/main/{instance}/to-onramp"
+      host: 127.0.0.1
+      port: 9139
+
+pipeline:
+  - id: main
+    interface:
+      inputs:
+        - in
+        - from-offramp
+      outputs:
+        - out
+        - error
+        - to-onramp
+    nodes:
+      - id: runtime
+        op: runtime::tremor
+        config:
+          script: |
+            match event of
+              # don't proxy for ping requests
+              # TODO need to support this usecase
+              case "ping" =>
+                emit "pong" => "to-onramp"
+              case "hello" =>
+                let $endpoint = "ws://localhost:8140",
+                emit event
+              default =>
+                let $endpoint = "ws://localhost:8139",
+                emit event
+            end
+      - id: response-processing
+        op: runtime::tremor
+        config:
+          script: |
+            event
+    links:
+      in: [ runtime ]
+      runtime: [ out ]
+      runtime/error: [ error ]
+
+      #from-offramp: [ to-onramp ]
+      from-offramp: [ response-processing ]
+      response-processing: [ to-onramp ]
+      response-processing/error: [ error ]
+
+offramp:
+  - id: upstream
+    type: ws
+    codec: string
+    postprocessors:
+      - lines
+    config:
+      link: "/pipeline/main/{instance}/from-offramp"
+      url: "ws://localhost:8139"
+
+binding:
+  - id: default
+    links:
+      '/onramp/ws/{instance}/out': [ '/pipeline/main/{instance}/in' ]
+
+      '/pipeline/main/{instance}/out': [
+        '/offramp/upstream/{instance}/in',
+        #'/offramp/system::stdout/system/in' # for debugging
+      ]
+
+      '/pipeline/main/{instance}/error': [ '/offramp/system::stderr/system/in' ]
+
+      # for debugging
+      '/pipeline/main/{instance}/to-onramp': [ '/offramp/system::stdout/system/in' ]
+
+      # tremor metrics
+      #'/pipeline/system::metrics/system/out': [ '/offramp/system::stdout/system/in' ]
+mapping:
+  /binding/default/01:
+    instance: '01'

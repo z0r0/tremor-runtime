@@ -64,6 +64,12 @@ fn onramp_loop(
             PipeHandlerResult::Retry => continue,
             PipeHandlerResult::Terminate => return Ok(()),
             PipeHandlerResult::Normal => (),
+            PipeHandlerResult::Response(_event) => {
+                dbg!("FROM PIPELINE (HP)");
+                //dbg!(&event);
+                // TODO might want to continue here?
+                continue;
+            }
         }
 
         thread::sleep(Duration::from_millis(config.interval));

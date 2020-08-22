@@ -31,8 +31,7 @@ pub(crate) use tremor_pipeline::{Event, EventOriginUri};
 
 // TODO pub here too?
 use std::mem;
-// TODO enable at the end
-//pub(crate) use std::thread;
+pub(crate) use std::thread;
 
 pub fn make_preprocessors(preprocessors: &[String]) -> Result<Preprocessors> {
     preprocessors

@@ -15,7 +15,7 @@
 use crate::offramp::prelude::*;
 use async_std::sync::{channel, Receiver, Sender};
 use async_tungstenite::async_std::connect_async;
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 use halfbrown::HashMap;
 use std::time::Duration;
 use tungstenite::protocol::Message;
@@ -60,8 +60,15 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>) {
 
         while let Ok(msg) = rx.recv().await {
             let r = match msg {
-                WsMessage::Text(t) => ws_stream.send(Message::Text(t)).await,
-                WsMessage::Binary(t) => ws_stream.send(Message::Binary(t)).await,
+                WsMessage::Text(t) => {
+                    dbg!(&t);
+                    ws_stream.send(Message::Text(t)).await
+                }
+                WsMessage::Binary(t) => {
+                    println!("SENDING BINARY");
+                    dbg!(&t);
+                    ws_stream.send(Message::Binary(t)).await
+                }
             };
             if let Err(e) = r {
                 error!(
@@ -69,6 +76,34 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>) {
                     e, url
                 );
                 break;
+            }
+            dbg!(&r);
+
+            //let pipelines: Vec<(TremorURL, pipeline::Addr)> = self
+            //    .pipelines
+            //    .iter()
+            //    .map(|(i, p)| (i.clone(), p.clone()))
+            //    .collect();
+
+            // TODO duplicate of ws onramp logic: consolidate
+            if let Some(msg) = ws_stream.next().await {
+                match msg {
+                    Ok(Message::Text(t)) => {
+                        dbg!(&t);
+                    }
+                    Ok(Message::Binary(t)) => {
+                        println!("GOT BINARY");
+                        dbg!(&t);
+                    }
+                    Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
+                        println!("GOT PING");
+                    }
+                    Ok(Message::Close(_)) => {
+                        println!("GOT CLOSE");
+                        break;
+                    }
+                    Err(e) => error!("WS error returned while waiting for client data: {}", e),
+                }
             }
         }
     }
@@ -134,6 +169,7 @@ impl Offramp for Ws {
         self.pipelines.is_empty()
     }
     fn default_codec(&self) -> &str {
+        // TODO align with ws onramp?
         "json"
     }
     fn start(&mut self, _codec: &Box<dyn Codec>, postprocessors: &[String]) -> Result<()> {
