@@ -214,6 +214,7 @@ async fn onramp_loop(
                     PipeHandlerResult::Response(event) => {
                         //dbg!("FROM PIPELINE (HPM)");
                         link_txes.get(&event.id).unwrap().send(event).await;
+                        // TODO cleanup link_txes for the event_id
                         continue;
                     }
                 }

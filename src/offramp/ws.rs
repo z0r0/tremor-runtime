@@ -107,6 +107,7 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>, response_tx: S
 
             // TODO do this only for LP
             // also duplicate of ws onramp logic: consolidate
+            // TODO async this (eg: for slower response handling on one request). use async_sink?
             if let Some(msg) = ws_stream.next().await {
                 match msg {
                     Ok(Message::Text(t)) => {
