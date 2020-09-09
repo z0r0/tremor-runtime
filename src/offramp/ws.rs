@@ -18,6 +18,7 @@ use async_tungstenite::async_std::connect_async;
 use futures::{SinkExt, StreamExt};
 use halfbrown::HashMap;
 use std::time::Duration;
+use tremor_script::prelude::*;
 use tungstenite::protocol::Message;
 use url::Url;
 
@@ -139,6 +140,12 @@ impl offramp::Impl for Ws {
 impl Offramp for Ws {
     fn on_event(&mut self, codec: &Box<dyn Codec>, _input: String, event: Event) -> Result<()> {
         dbg!("on event");
+        let pipelines: Vec<(TremorURL, pipeline::Addr)> = self
+            .pipelines
+            .iter()
+            .map(|(i, p)| (i.clone(), p.clone()))
+            .collect();
+
         task::block_on(async {
             while !self.rx.is_empty() {
                 self.addr = self.rx.recv().await.unwrap_or_default();
@@ -164,8 +171,39 @@ impl Offramp for Ws {
             };
 
             // TODO do this only for LP
-            let response = self.response_rx.recv().await;
-            dbg!(&response);
+            if let Ok(data) = self.response_rx.recv().await {
+                dbg!(&data);
+                let event_meta = Value::object();
+                //event_meta.insert("status", r.status).unwrap();
+                let response_data = LineValue::try_new(vec![data], |data| {
+                    std::str::from_utf8(data[0].as_slice())
+                        .map(|v| ValueAndMeta::from_parts(Value::from(v), event_meta))
+                });
+                if let Ok(d) = response_data {
+                    let response = Event {
+                        is_batch: false,
+                        //id: 0, // TODO better id?
+                        id: event.id,
+                        //data: (Value::null(), m).into(),
+                        data: d,
+                        ingest_ns: nanotime(),
+                        origin_uri: None, // TODO set based on response
+                        kind: None,
+                    };
+                    //dbg!(&response);
+                    // TODO send only to the linked pipeline
+                    for (pid, p) in &pipelines {
+                        // TODO adopt try_send everywhere?
+                        // TODO avoid clone here
+                        if p.addr
+                            .try_send(pipeline::Msg::Response(response.clone()))
+                            .is_err()
+                        {
+                            error!("Failed to send response to pipeline {}", pid)
+                        };
+                    }
+                }
+            }
 
             Ok(())
         })
