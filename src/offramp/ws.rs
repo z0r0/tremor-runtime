@@ -43,9 +43,10 @@ pub struct Ws {
     pipelines: HashMap<TremorURL, pipeline::Addr>,
     postprocessors: Postprocessors,
     rx: Receiver<Option<WsAddr>>,
+    response_rx: Receiver<Vec<u8>>,
 }
 
-async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>) {
+async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>, response_tx: Sender<Vec<u8>>) {
     loop {
         let mut ws_stream = if let Ok((ws_stream, _)) = connect_async(&url).await {
             ws_stream
@@ -79,21 +80,20 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>) {
             }
             dbg!(&r);
 
-            //let pipelines: Vec<(TremorURL, pipeline::Addr)> = self
-            //    .pipelines
-            //    .iter()
-            //    .map(|(i, p)| (i.clone(), p.clone()))
-            //    .collect();
+            dbg!("START RECEIVING RESPONSE");
 
-            // TODO duplicate of ws onramp logic: consolidate
+            // TODO do this only for LP
+            // also duplicate of ws onramp logic: consolidate
             if let Some(msg) = ws_stream.next().await {
                 match msg {
                     Ok(Message::Text(t)) => {
                         dbg!(&t);
+                        response_tx.send(t.into_bytes()).await;
                     }
                     Ok(Message::Binary(t)) => {
                         println!("GOT BINARY");
                         dbg!(&t);
+                        response_tx.send(t).await;
                     }
                     Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
                         println!("GOT PING");
@@ -105,6 +105,8 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>) {
                     Err(e) => error!("WS error returned while waiting for client data: {}", e),
                 }
             }
+
+            dbg!("DONE RECEIVING RESPONSE");
         }
     }
 }
@@ -116,8 +118,9 @@ impl offramp::Impl for Ws {
             // Ensure we have valid url
             Url::parse(&config.url)?;
             let (tx, rx) = channel(1);
+            let (response_tx, response_rx) = channel(1);
 
-            task::spawn(ws_loop(config.url.clone(), tx));
+            task::spawn(ws_loop(config.url.clone(), tx, response_tx));
 
             Ok(Box::new(Self {
                 addr: None,
@@ -125,6 +128,7 @@ impl offramp::Impl for Ws {
                 pipelines: HashMap::new(),
                 postprocessors: vec![],
                 rx,
+                response_rx,
             }))
         } else {
             Err("[WS Offramp] Offramp requires a config".into())
@@ -134,6 +138,7 @@ impl offramp::Impl for Ws {
 
 impl Offramp for Ws {
     fn on_event(&mut self, codec: &Box<dyn Codec>, _input: String, event: Event) -> Result<()> {
+        dbg!("on event");
         task::block_on(async {
             while !self.rx.is_empty() {
                 self.addr = self.rx.recv().await.unwrap_or_default();
@@ -157,6 +162,11 @@ impl Offramp for Ws {
             } else {
                 return Err(Error::from("not connected"));
             };
+
+            // TODO do this only for LP
+            let response = self.response_rx.recv().await;
+            dbg!(&response);
+
             Ok(())
         })
     }
