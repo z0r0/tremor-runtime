@@ -22,7 +22,7 @@ use tremor_script::prelude::*;
 use tungstenite::protocol::Message;
 use url::Url;
 
-type WsAddr = Sender<WsMessage>;
+type WsAddr = Sender<(WsMessage, Option<String>)>;
 
 enum WsMessage {
     Binary(Vec<u8>),
@@ -48,66 +48,78 @@ pub struct Ws {
 }
 
 async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>, response_tx: Sender<Vec<u8>>) {
+    //let mut connection_pool = HashMap::new();
+
     loop {
-        let mut ws_stream = if let Ok((ws_stream, _)) = connect_async(&url).await {
-            ws_stream
-        } else {
-            error!("Failed to connect to {}, retrying in 1s", url);
-            offramp_tx.send(None).await;
-            task::sleep(Duration::from_secs(1)).await;
-            continue;
-        };
+        //let mut ws_stream = if let Ok((ws_stream, _)) = connect_async(&url).await {
+        //    ws_stream
+        //} else {
+        //    error!("Failed to connect to {}, retrying in 1s", url);
+        //    offramp_tx.send(None).await;
+        //    task::sleep(Duration::from_secs(1)).await;
+        //    continue;
+        //};
         let (tx, rx) = channel(64);
         offramp_tx.send(Some(tx)).await;
 
-        while let Ok(msg) = rx.recv().await {
-            let r = match msg {
-                WsMessage::Text(t) => {
-                    dbg!(&t);
-                    ws_stream.send(Message::Text(t)).await
-                }
-                WsMessage::Binary(t) => {
-                    println!("SENDING BINARY");
-                    dbg!(&t);
-                    ws_stream.send(Message::Binary(t)).await
-                }
-            };
-            if let Err(e) = r {
-                error!(
-                    "Websocket send error: {} for endppoint {}, reconnecting",
-                    e, url
-                );
-                break;
-            }
-            dbg!(&r);
+        while let Ok((msg, override_url)) = rx.recv().await {
+            let destination = override_url.unwrap_or(url.clone());
 
-            dbg!("START RECEIVING RESPONSE");
-
-            // TODO do this only for LP
-            // also duplicate of ws onramp logic: consolidate
-            if let Some(msg) = ws_stream.next().await {
-                match msg {
-                    Ok(Message::Text(t)) => {
+            if let Ok((mut ws_stream, _)) = connect_async(&destination).await {
+                let r = match msg {
+                    WsMessage::Text(t) => {
                         dbg!(&t);
-                        response_tx.send(t.into_bytes()).await;
+                        ws_stream.send(Message::Text(t)).await
                     }
-                    Ok(Message::Binary(t)) => {
-                        println!("GOT BINARY");
+                    WsMessage::Binary(t) => {
+                        println!("SENDING BINARY");
                         dbg!(&t);
-                        response_tx.send(t).await;
+                        ws_stream.send(Message::Binary(t)).await
                     }
-                    Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
-                        println!("GOT PING");
-                    }
-                    Ok(Message::Close(_)) => {
-                        println!("GOT CLOSE");
-                        break;
-                    }
-                    Err(e) => error!("WS error returned while waiting for client data: {}", e),
+                };
+                if let Err(e) = r {
+                    error!(
+                        "Websocket send error: {} for endppoint {}, reconnecting",
+                        e, url
+                    );
+                    break;
                 }
-            }
+                dbg!(&r);
 
-            dbg!("DONE RECEIVING RESPONSE");
+                dbg!("START RECEIVING RESPONSE");
+
+                // TODO do this only for LP
+                // also duplicate of ws onramp logic: consolidate
+                if let Some(msg) = ws_stream.next().await {
+                    match msg {
+                        Ok(Message::Text(t)) => {
+                            dbg!(&t);
+                            response_tx.send(t.into_bytes()).await;
+                        }
+                        Ok(Message::Binary(t)) => {
+                            println!("GOT BINARY");
+                            dbg!(&t);
+                            response_tx.send(t).await;
+                        }
+                        Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
+                            println!("GOT PING");
+                        }
+                        Ok(Message::Close(_)) => {
+                            println!("GOT CLOSE");
+                            break;
+                        }
+                        Err(e) => error!("WS error returned while waiting for client data: {}", e),
+                    }
+                }
+
+                dbg!("DONE RECEIVING RESPONSE");
+            } else {
+                error!("Failed to connect to {}, retrying in 1s", url);
+                offramp_tx.send(None).await;
+                task::sleep(Duration::from_secs(1)).await;
+                // TODO better choice here
+                continue;
+            }
         }
     }
 }
@@ -152,14 +164,21 @@ impl Offramp for Ws {
             }
 
             if let Some(addr) = &self.addr {
-                for value in event.value_iter() {
+                for (value, meta) in event.value_meta_iter() {
+                    // TODO better way to handle this? only do this for non-batched events
+                    let url = Some(
+                        meta.get("url")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| Error::from("'url' not set for ws offramp!"))?
+                            .to_string(),
+                    );
                     let raw = codec.encode(value)?;
                     let datas = postprocess(&mut self.postprocessors, event.ingest_ns, raw)?;
                     for raw in datas {
                         if self.config.binary {
-                            addr.send(WsMessage::Binary(raw)).await;
+                            addr.send((WsMessage::Binary(raw), url.clone())).await;
                         } else if let Ok(txt) = String::from_utf8(raw) {
-                            addr.send(WsMessage::Text(txt)).await;
+                            addr.send((WsMessage::Text(txt), url.clone())).await;
                         } else {
                             error!("[WS Offramp] Invalid utf8 data for text message");
                             return Err(Error::from("Invalid utf8 data for text message"));

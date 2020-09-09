@@ -29,10 +29,10 @@ pipeline:
               case "ping" =>
                 emit "pong" => "to-onramp"
               case "hello" =>
-                let $endpoint = "ws://localhost:8140",
+                let $url = "ws://localhost:8140",
                 emit event
               default =>
-                let $endpoint = "ws://localhost:8139",
+                let $url = "ws://localhost:8139",
                 emit event
             end
       - id: response-processing

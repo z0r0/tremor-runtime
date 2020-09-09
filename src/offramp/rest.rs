@@ -303,7 +303,7 @@ impl Offramp for Rest {
         let mut endpoint = None;
         //dbg!(&event.id);
         for (value, meta) in event.value_meta_iter() {
-            // TODO better way to handle this?
+            // TODO better way to handle this? only do this for non-batched events
             endpoint = Some(
                 meta.get("endpoint")
                     .and_then(Value::as_str)
