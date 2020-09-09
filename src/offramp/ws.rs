@@ -15,6 +15,7 @@
 use crate::offramp::prelude::*;
 use async_std::sync::{channel, Receiver, Sender};
 use async_tungstenite::async_std::connect_async;
+use async_tungstenite::WebSocketStream;
 use futures::{SinkExt, StreamExt};
 use halfbrown::HashMap;
 use std::time::Duration;
@@ -48,7 +49,8 @@ pub struct Ws {
 }
 
 async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>, response_tx: Sender<Vec<u8>>) {
-    //let mut connection_pool = HashMap::new();
+    let mut connection_pool: HashMap<String, WebSocketStream<async_std::net::TcpStream>> =
+        HashMap::new();
 
     loop {
         //let mut ws_stream = if let Ok((ws_stream, _)) = connect_async(&url).await {
@@ -65,61 +67,69 @@ async fn ws_loop(url: String, offramp_tx: Sender<Option<WsAddr>>, response_tx: S
         while let Ok((msg, override_url)) = rx.recv().await {
             let destination = override_url.unwrap_or(url.clone());
 
-            if let Ok((mut ws_stream, _)) = connect_async(&destination).await {
-                let r = match msg {
-                    WsMessage::Text(t) => {
-                        dbg!(&t);
-                        ws_stream.send(Message::Text(t)).await
-                    }
-                    WsMessage::Binary(t) => {
-                        println!("SENDING BINARY");
-                        dbg!(&t);
-                        ws_stream.send(Message::Binary(t)).await
-                    }
-                };
-                if let Err(e) = r {
-                    error!(
-                        "Websocket send error: {} for endppoint {}, reconnecting",
-                        e, url
-                    );
-                    break;
+            if !connection_pool.contains_key(&destination) {
+                if let Ok((s, _)) = connect_async(&destination).await {
+                    connection_pool.insert(destination.clone(), s);
+                } else {
+                    error!("Failed to connect to {}, retrying in 1s", url);
+                    offramp_tx.send(None).await;
+                    task::sleep(Duration::from_secs(1)).await;
+                    // TODO better choice here
+                    continue;
                 }
-                dbg!(&r);
-
-                dbg!("START RECEIVING RESPONSE");
-
-                // TODO do this only for LP
-                // also duplicate of ws onramp logic: consolidate
-                if let Some(msg) = ws_stream.next().await {
-                    match msg {
-                        Ok(Message::Text(t)) => {
-                            dbg!(&t);
-                            response_tx.send(t.into_bytes()).await;
-                        }
-                        Ok(Message::Binary(t)) => {
-                            println!("GOT BINARY");
-                            dbg!(&t);
-                            response_tx.send(t).await;
-                        }
-                        Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
-                            println!("GOT PING");
-                        }
-                        Ok(Message::Close(_)) => {
-                            println!("GOT CLOSE");
-                            break;
-                        }
-                        Err(e) => error!("WS error returned while waiting for client data: {}", e),
-                    }
-                }
-
-                dbg!("DONE RECEIVING RESPONSE");
-            } else {
-                error!("Failed to connect to {}, retrying in 1s", url);
-                offramp_tx.send(None).await;
-                task::sleep(Duration::from_secs(1)).await;
-                // TODO better choice here
-                continue;
             }
+
+            let ws_stream = connection_pool
+                .get_mut(&destination)
+                .unwrap_or_else(|| unreachable!());
+
+            let r = match msg {
+                WsMessage::Text(t) => {
+                    dbg!(&t);
+                    ws_stream.send(Message::Text(t)).await
+                }
+                WsMessage::Binary(t) => {
+                    println!("SENDING BINARY");
+                    dbg!(&t);
+                    ws_stream.send(Message::Binary(t)).await
+                }
+            };
+            if let Err(e) = r {
+                error!(
+                    "Websocket send error: {} for endppoint {}, reconnecting",
+                    e, url
+                );
+                break;
+            }
+            dbg!(&r);
+
+            dbg!("START RECEIVING RESPONSE");
+
+            // TODO do this only for LP
+            // also duplicate of ws onramp logic: consolidate
+            if let Some(msg) = ws_stream.next().await {
+                match msg {
+                    Ok(Message::Text(t)) => {
+                        dbg!(&t);
+                        response_tx.send(t.into_bytes()).await;
+                    }
+                    Ok(Message::Binary(t)) => {
+                        println!("GOT BINARY");
+                        dbg!(&t);
+                        response_tx.send(t).await;
+                    }
+                    Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {
+                        println!("GOT PING");
+                    }
+                    Ok(Message::Close(_)) => {
+                        println!("GOT CLOSE");
+                        break;
+                    }
+                    Err(e) => error!("WS error returned while waiting for client data: {}", e),
+                }
+            }
+
+            dbg!("DONE RECEIVING RESPONSE");
         }
     }
 }
